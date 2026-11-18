@@ -148,7 +148,7 @@ function table(el, {cols, rows, page=25, search=true, sort, dir=-1, foot, csv}){
 
 /* ------------------------------------------------------------------ KPI */
 const kpi = (lbl, val, cmp="", tag="", barPct=null) =>
-  `<div class="kpi">${tag?`<div class="tag">${tag}</div>`:""}<div class="lbl">${lbl}</div><div class="val">${val}</div><div class="cmp">${cmp}</div>${barPct!=null?`<div class="bar"><i style="width:${Math.min(100,Math.max(0,barPct*100))}%"></i></div>`:""}</div>`;
+  `<div class="kpi"><div class="lbl">${lbl}</div><div class="val">${val}</div><div class="cmp">${cmp}</div>${barPct!=null?`<div class="bar"><i style="width:${Math.min(100,Math.max(0,barPct*100))}%"></i></div>`:""}</div>`;
 
 /* ================================================================== ATM */
 function atmData(){
@@ -170,20 +170,20 @@ function atmSummary(area){
 }
 function renderATM(){
   const A = D.atm, x = atmData(), n = x.n, L = BLN[A.last];
-  const metric = $("atmMetric").value, mName = {t:"Transaksi", v:"Volume", f:"Fee Based Income"}[metric];
+  const metric = $("atmMetric").value, mName = {t:"Transaksi", v:"Volume", f:"Fee based income"}[metric];
   const mf = metric==="t" ? fC : fRp;
   const k = (lbl,key,fmt) => { const c=ytd(x.cur[key],n), p=ytd(x.prev[key]||[],n), lc=x.cur[key][n-1], lp=x.cur[key][n-2];
-    return kpi(lbl+` YTD ${A.year}`, fmt(c), `${grHtml(c,p)} &middot; ${L}: ${fmt(lc)} ${n>1?grHtml(lc,lp,"MoM"):""}`); };
+    return kpi(lbl+` YTD ${A.year}`, fmt(c), `${grHtml(c,p,"dibanding "+(A.year-1))}<br>${L}: ${fmt(lc)} ${n>1?grHtml(lc,lp,"MoM"):""}`); };
   const nCrm = x.ms.filter(m=>m.j==="CRM").length;
   $("atmKpis").innerHTML =
-    kpi("Jumlah Mesin", fN(x.ms.length), `CRM ${fN(nCrm)} &middot; ATM ${fN(x.ms.length-nCrm)}`) +
-    k("Transaksi","t",fC) + k("Volume","v",fRp) + k("Fee Based Income","f",fRp) +
-    kpi(`Volume Setor Tunai YTD ${A.year}`, fRp(ytd(x.cur.vs,n)), `${fN(ytd(x.cur.ts,n))} transaksi setor`);
+    kpi("Jumlah mesin", fN(x.ms.length), `CRM ${fN(nCrm)}, ATM ${fN(x.ms.length-nCrm)}`) +
+    k("Transaksi","t",fC) + k("Volume","v",fRp) + k("Fee based income","f",fRp) +
+    kpi(`Volume setor tunai YTD ${A.year}`, fRp(ytd(x.cur.vs,n)), `${fN(ytd(x.cur.ts,n))} transaksi setor`);
 
-  $("atmTrendT").textContent = `Tren Bulanan ${mName} — ${A.year} vs ${A.year-1}`;
+  $("atmTrendT").textContent = `${mName} per bulan, ${A.year} dibanding ${A.year-1}`;
   chart("cAtmTrend", {labels:BLN, fmt:mf, series:[S_(String(A.year-1), x.prev[metric]||[], C.prev), S_(String(A.year), x.cur[metric].concat(Array(12-n).fill(null)), C.s1)]});
 
-  $("atmAreaT").textContent = `${mName} YTD (Jan–${L}) per Area`;
+  $("atmAreaT").textContent = `${mName} Jan–${L} per area`;
   const ar = areas();
   const pvAll = A.prev.filter(p => (!$("atmJenis").value || p.j===$("atmJenis").value) && (!$("atmGroup").value || p.g===$("atmGroup").value));
   chart("cAtmArea", {labels:ar.map(title), fmt:mf, horizontal:true, series:[
@@ -222,13 +222,13 @@ function edcSummary(area){
 function renderEDC(){
   const E = D.edc, x = edcRows(), I = x.I, t = x.tot, W = `W${E.week}`;
   $("edcKpis").innerHTML =
-    kpi("Jumlah Merchant", fN(t("merch")), `${fN(t("edc"))} mesin EDC terpasang`) +
-    kpi(`Merchant Baru ${E.year}`, fN(t("new")), "aktivasi tahun berjalan") +
-    kpi(`Sales Volume YTD ${W} ${E.year}`, fRp(t("sv")), grHtml(t("sv"),t("svp"))) +
+    kpi("Jumlah merchant", fN(t("merch")), `${fN(t("edc"))} mesin EDC terpasang`) +
+    kpi(`Merchant baru ${E.year}`, fN(t("new")), "aktivasi tahun berjalan") +
+    kpi(`Sales volume YTD ${W}`, fRp(t("sv")), grHtml(t("sv"),t("svp"))) +
     kpi(`MDFG / Fee YTD ${W}`, fRp(t("md")), grHtml(t("md"),t("mdp"))) +
     kpi(`Transaksi YTD ${W}`, fC(t("tx")), grHtml(t("tx"),t("txp"))) +
-    kpi(`Avg Funding ${W}`, fRp(t("fd")), grHtml(t("fd"),t("fdp"))) +
-    kpi(`Sales Volume Minggu ${W}`, fRp(t("sw")), grHtml(t("sw"),t("swp"),`vs W${E.week-1}`));
+    kpi(`Avg funding ${W}`, fRp(t("fd")), grHtml(t("fd"),t("fdp"))) +
+    kpi(`Sales volume minggu ${W}`, fRp(t("sw")), grHtml(t("sw"),t("swp"),`vs W${E.week-1}`));
 
   const ar = areas();
   const byA = (a,k) => sum(x.rows.filter(r=>r[0]===a), r=>r[I[k]]);
@@ -282,13 +282,13 @@ function renderLVM(){
   const L = D.lvm, kelas = $("lvmKelas").value, f = lvmFilter(kelas), a = lvmAgg(f.rows), t = tgtFor(f.codes);
   const {y,m,d} = lvmDate(), asof = `${d} ${BLN[m-1]} ${y}`;
   $("lvmKpis").innerHTML =
-    kpi("Merchant Terdaftar", fN(a.n), `${fN(a.act)} aktif bertransaksi (${fP(a.n?a.act/a.n:0)})`) +
-    kpi("Akuisisi YTD", fN(a.akY), `${pctHtml(t.akYtd?a.akY/t.akYtd:null)} dari target s.d. ${asof} (${fN(t.akYtd)}) &middot; FY ${fN(t.akFy)}`, "", t.akFy?a.akY/t.akFy:null) +
-    kpi(`Akuisisi MTD ${BLN[m-1]}`, fN(a.akM), `${pctHtml(t.akMtdP?a.akM/t.akMtdP:null)} dari target s.d. ${asof} (${fN(t.akMtdP)}) &middot; target bulan ${fN(t.akMtd)}`, "", t.akMtd?a.akM/t.akMtd:null) +
+    kpi("Merchant terdaftar", fN(a.n), `${fN(a.act)} aktif bertransaksi (${fP(a.n?a.act/a.n:0)})`) +
+    kpi("Akuisisi YTD", fN(a.akY), `${pctHtml(t.akYtd?a.akY/t.akYtd:null)} dari target s.d. ${asof} (${fN(t.akYtd)}) <br>Target setahun ${fN(t.akFy)}`, "", t.akFy?a.akY/t.akFy:null) +
+    kpi(`Akuisisi MTD ${BLN[m-1]}`, fN(a.akM), `${pctHtml(t.akMtdP?a.akM/t.akMtdP:null)} dari target s.d. ${asof} (${fN(t.akMtdP)}) <br>Target sebulan ${fN(t.akMtd)}`, "", t.akMtd?a.akM/t.akMtd:null) +
     kpi("Merchant USAK", fN(a.usak), `${pctHtml(t.usak?a.usak/t.usak:null)} dari target ${fN(t.usak)}`, "", t.usak?a.usak/t.usak:null) +
-    kpi(`Sales Volume YTD`, fRp(a.svy), `MTD ${BLN[m-1]}: ${fRp(a.svm)}`) +
-    kpi(`Fee Based Income YTD`, fRp(a.fby), `MTD ${BLN[m-1]}: ${fRp(a.fbm)}`) +
-    kpi("Avg Balance Tabungan", fRp(a.bal), `${fN(a.cls)} rekening merchant closed`);
+    kpi(`Sales volume YTD`, fRp(a.svy), `MTD ${BLN[m-1]}: ${fRp(a.svm)}`) +
+    kpi(`Fee based income YTD`, fRp(a.fby), `MTD ${BLN[m-1]}: ${fRp(a.fbm)}`) +
+    kpi("Avg balance tabungan", fRp(a.bal), `${fN(a.cls)} rekening merchant closed`);
 
   const acq = L.acq.filter(r => f.ok(r[0]) || (!D.targets[r[0]] && inArea(BAREA[r[0]]) && !kelas));
   const byM = yr => Array.from({length:12},(_,i)=> sum(acq.filter(r=>r[1]===yr && r[2]===i+1), r=>r[3]));
@@ -343,63 +343,118 @@ function renderCabang(){
 }
 
 /* ================================================================== RINGKASAN */
+function prodPanel({tab, color, name, per, lbl, val, cmp, subs, spark}){
+  return `<button class="prod" data-go="${tab}" style="--pc:${color}">
+    <div class="p-top"><span class="p-name">${name}</span><span class="p-per">${per}</span></div>
+    <div class="p-lbl">${lbl}</div><div class="p-val">${val}</div><div class="p-cmp">${cmp}</div>
+    <div class="spark" data-spark="${spark}"></div>
+    <div class="p-sub">${subs.map(s=>`<div><b>${s[1]}</b><span>${s[0]}</span></div>`).join("")}</div>
+    <div class="p-go">Lihat detail ${name}</div></button>`;
+}
 function renderSummary(){
-  const A = D.atm, E = D.edc, L = D.lvm, at = atmSummary(AREA), ed = edcSummary(AREA), lv = lvmSummary(AREA);
+  const A = D.atm, E = D.edc, L = D.lvm, n = A.last+1;
+  const at = atmSummary(AREA), ed = edcSummary(AREA), lv = lvmSummary(AREA);
+  const {y,m,d} = lvmDate();
+  const lvP = lv.tgt.akYtd ? lv.akY/lv.tgt.akYtd : null;
+  $("sumProducts").innerHTML =
+    prodPanel({tab:"atm", color:C.s1, name:"ATM & CRM", per:`Jan–${BLN[A.last]} ${A.year}`, lbl:"Fee based income YTD",
+      val:fRp(at.f), cmp:grHtml(at.f,at.fp,`dibanding ${A.year-1}`), spark:"atm",
+      subs:[["Transaksi YTD", fC(at.t)], ["Jumlah mesin", fN(at.n)]]}) +
+    prodPanel({tab:"edc", color:C.s2, name:"EDC Merchant", per:`s.d. minggu ${E.week} ${E.year}`, lbl:"Sales volume YTD",
+      val:fRp(ed.sv), cmp:grHtml(ed.sv,ed.svp,`dibanding ${E.year-1}`), spark:"edc",
+      subs:[["MDFG YTD", fRp(ed.md)], ["Merchant", fN(ed.merch)]]}) +
+    prodPanel({tab:"lvm", color:C.s3, name:"Livin' Merchant", per:`s.d. ${d} ${BLN[m-1]} ${y}`, lbl:"Akuisisi merchant baru YTD",
+      val:fN(lv.akY), cmp:`${pctHtml(lvP)} dari target s.d. hari ini (${fN(lv.tgt.akYtd)})`, spark:"lvm",
+      subs:[["Merchant USAK", `${fN(lv.usak)} <small class="${pctCls(lv.tgt.usak?lv.usak/lv.tgt.usak:null)}">${fP(lv.tgt.usak?lv.usak/lv.tgt.usak:null)}</small>`], ["Sales volume YTD", fRp(lv.svy)]]});
+  // sparklines
+  const atmMs = A.machines.filter(x => inArea(x.a));
+  drawChart(document.querySelector('[data-spark=atm]'), {spark:true, labels:BLN.slice(0,n), fmt:fRp,
+    series:[S_("FBI", Array.from({length:n},(_,i)=>sum(atmMs,x=>x.f[i])), C.s1)]});
+  const yrs = Object.keys(E.hist);
+  drawChart(document.querySelector('[data-spark=edc]'), {spark:true, labels:yrs, fmt:fRp,
+    series:[S_("Sales volume", yrs.map(yy => sum(areas(), a => E.hist[yy][a]||0)), yrs.map(yy=>yy.includes("YTD")?C.s2:"#f5b49a"))]});
+  const acq = L.acq.filter(r => inArea(BAREA[r[0]]));
+  drawChart(document.querySelector('[data-spark=lvm]'), {spark:true, labels:BLN.slice(0,m), fmt:fN,
+    series:[S_("Akuisisi", Array.from({length:m},(_,i)=>sum(acq.filter(r=>r[1]===y&&r[2]===i+1),r=>r[3])), C.s3)]});
+  document.querySelectorAll("[data-go]").forEach(b => b.onclick = () => goTab(b.dataset.go));
+
+  // papan skor
+  const cols = [{a:"", t:"Region XI"}, ...D.areas.map(a => ({a, t:title(a).replace("Area ","")}))];
+  const S = cols.map(c => ({...c, at:atmSummary(c.a), ed:edcSummary(c.a), lv:lvmSummary(c.a)}));
+  const gCls = g => g==null ? "" : g >= 0 ? "good" : "bad";
+  const tCls = p => p==null ? "" : p >= 1 ? "good" : p >= .8 ? "mid" : "bad";
+  const sg = g => g==null ? "–" : (g>=0?"▲ ":"▼ ") + fP(Math.abs(g));
+  const rows = [
+    ["FBI ATM", `YoY Jan–${BLN[A.last]}`, s => { const g = gr(s.at.f,s.at.fp); return [gCls(g), sg(g), fRp(s.at.f)]; }],
+    ["Transaksi ATM", "YoY", s => { const g = gr(s.at.t,s.at.tp); return [gCls(g), sg(g), fC(s.at.t)]; }],
+    ["Sales volume EDC", `YoY W${E.week}`, s => { const g = gr(s.ed.sv,s.ed.svp); return [gCls(g), sg(g), fRp(s.ed.sv)]; }],
+    ["MDFG EDC", `YoY W${E.week}`, s => { const g = gr(s.ed.md,s.ed.mdp); return [gCls(g), sg(g), fRp(s.ed.md)]; }],
+    ["Akuisisi Livin'", "vs target YTD", s => { const p = s.lv.tgt.akYtd ? s.lv.akY/s.lv.tgt.akYtd : null; return [tCls(p), fP(p), `${fN(s.lv.akY)} / ${fN(s.lv.tgt.akYtd)}`]; }],
+    ["USAK Livin'", "vs target", s => { const p = s.lv.tgt.usak ? s.lv.usak/s.lv.tgt.usak : null; return [tCls(p), fP(p), `${fN(s.lv.usak)} / ${fN(s.lv.tgt.usak)}`]; }],
+  ];
+  const sel = c => (AREA && c.a === AREA ? " sel" : "");
+  $("sumBoard").innerHTML = `<div class="board" style="grid-template-columns:150px repeat(${S.length},minmax(0,1fr))">
+    <div></div>${S.map(c=>`<div class="bh${c.a?"":" reg"}${sel(c)}">${c.t}</div>`).join("")}
+    ${rows.map(([nm,sub,fn]) => `<div class="bm">${nm}<span>${sub}</span></div>` +
+      S.map(c => { const [k,big,small] = fn(c); return `<div class="bc ${k}${sel(c)}"><b>${big}</b><span>${small}</span></div>`; }).join("")).join("")}
+  </div>`;
+
+  const ar = areas(), SA = ar.map(a => ({a, at:atmSummary(a), ed:edcSummary(a), lv:lvmSummary(a)}));
   const tot = at.f + ed.md + lv.fby;
-  $("sumKpis").innerHTML =
-    kpi(`FBI ATM YTD ${BLN[A.last]}`, fRp(at.f), grHtml(at.f,at.fp), "ATM") +
-    kpi(`Transaksi ATM YTD`, fC(at.t), `${grHtml(at.t,at.tp)} &middot; ${fN(at.n)} mesin`, "ATM") +
-    kpi(`Sales Volume EDC YTD W${E.week}`, fRp(ed.sv), grHtml(ed.sv,ed.svp), "EDC") +
-    kpi(`MDFG EDC YTD W${E.week}`, fRp(ed.md), grHtml(ed.md,ed.mdp), "EDC") +
-    kpi("Akuisisi Livin' Merchant YTD", fN(lv.akY), `${pctHtml(lv.tgt.akYtd?lv.akY/lv.tgt.akYtd:null)} dari target YTD`, "LVM", lv.tgt.akFy?lv.akY/lv.tgt.akFy:null) +
-    kpi("Merchant USAK", fN(lv.usak), `${pctHtml(lv.tgt.usak?lv.usak/lv.tgt.usak:null)} dari target ${fN(lv.tgt.usak)}`, "LVM", lv.tgt.usak?lv.usak/lv.tgt.usak:null) +
-    kpi("Sales Volume LVM YTD", fRp(lv.svy), `${fN(lv.act)} merchant aktif`, "LVM") +
-    kpi("Total Fee Based Income TBR", fRp(tot), "ATM FBI + EDC MDFG + LVM FBI (YTD)", "TBR");
-
-  const ar = areas(), S = ar.map(a => ({a, at:atmSummary(a), ed:edcSummary(a), lv:lvmSummary(a)}));
+  $("sumFbiNote").textContent = `Total ${fRp(tot)}: ATM ${fP(tot?at.f/tot:0)}, EDC ${fP(tot?ed.md/tot:0)}, Livin' ${fP(tot?lv.fby/tot:0)}`;
   chart("cSumFbi", {labels:ar.map(title), fmt:fC, stacked:true, series:[
-      S_("ATM FBI", S.map(s=>s.at.f), C.s1), S_("EDC MDFG", S.map(s=>s.ed.md), C.s2), S_("LVM FBI", S.map(s=>s.lv.fby), C.s3)]});
+      S_("FBI ATM", SA.map(s=>s.at.f), C.s1), S_("MDFG EDC", SA.map(s=>s.ed.md), C.s2), S_("FBI Livin' Merchant", SA.map(s=>s.lv.fby), C.s3)]});
   chart("cSumTgt", {labels:ar.map(title), fmt:v=>fP(v), series:[
-      S_("% Akuisisi YTD", S.map(s=>s.lv.tgt.akYtd?s.lv.akY/s.lv.tgt.akYtd:0), C.s1),
-      S_("% USAK", S.map(s=>s.lv.tgt.usak?s.lv.usak/s.lv.tgt.usak:0), C.s3),
+      S_("Akuisisi YTD", SA.map(s=>s.lv.tgt.akYtd?s.lv.akY/s.lv.tgt.akYtd:0), C.s1),
+      S_("USAK", SA.map(s=>s.lv.tgt.usak?s.lv.usak/s.lv.tgt.usak:0), C.s3),
       S_("Target 100%", ar.map(()=>1), C.s2, {type:"line", dash:1, flat:1})]});
-
-  const gh = (x,v) => v==null?"–":`<span class="${v>=0?"up":"down"}">${v>=0?"▲":"▼"} ${fP(Math.abs(v))}</span>`;
-  table($("tSumArea"), {search:false, sort:"af", rows:S.map(s=>({a:s.a, n:s.at.n, af:s.at.f, gaf:gr(s.at.f,s.at.fp), sv:s.ed.sv, gsv:gr(s.ed.sv,s.ed.svp), md:s.ed.md, gmd:gr(s.ed.md,s.ed.mdp),
-      lvn:s.lv.n, ak:s.lv.akY, pak:s.lv.tgt.akYtd?s.lv.akY/s.lv.tgt.akYtd:null, us:s.lv.usak, pus:s.lv.tgt.usak?s.lv.usak/s.lv.tgt.usak:null})), cols:[
-    {k:"a",l:"Area",f:title}, {k:"n",l:"ATM/CRM",num:1,f:fN}, {k:"af",l:"FBI ATM YTD",num:1,f:fC}, {k:"gaf",l:"YoY",num:1,h:gh},
-    {k:"sv",l:"SV EDC YTD",num:1,f:fC}, {k:"gsv",l:"YoY",num:1,h:gh}, {k:"md",l:"MDFG EDC",num:1,f:fC}, {k:"gmd",l:"YoY",num:1,h:gh},
-    {k:"lvn",l:"Merchant LVM",num:1,f:fN}, {k:"ak",l:"Akuisisi YTD",num:1,f:fN}, {k:"pak",l:"% Target",num:1,f:pctHtml}, {k:"us",l:"USAK",num:1,f:fN}, {k:"pus",l:"% USAK",num:1,f:pctHtml}]});
 }
 
 /* ================================================================== app */
 const RENDER = {ringkasan:renderSummary, atm:renderATM, edc:renderEDC, lvm:renderLVM, cabang:renderCabang};
 let TAB = "ringkasan";
-function renderTab(){ try { RENDER[TAB](); } catch(e){ console.error(e); } }
+const TITLES = {ringkasan:"Ringkasan kinerja", atm:"ATM & CRM", edc:"EDC Merchant", lvm:"Livin' Merchant", cabang:"Scorecard cabang"};
+function subTitle(){
+  const {y,m,d} = lvmDate();
+  return {
+    ringkasan:`Posisi data ATM ${BLN[D.atm.last]} ${D.atm.year}, EDC minggu ${D.edc.week} ${D.edc.year}, Livin' Merchant ${d} ${BLN[m-1]} ${y}`,
+    atm:`Januari–${BLN[D.atm.last]} ${D.atm.year}, dibanding periode yang sama ${D.atm.year-1}`,
+    edc:`Year to date minggu ${D.edc.week} ${D.edc.year}, dibanding minggu yang sama ${D.edc.year-1}`,
+    lvm:`Data sampai ${d} ${BLN[m-1]} ${y}`,
+    cabang:`ATM ${BLN[D.atm.last]}, EDC minggu ${D.edc.week}, Livin' Merchant ${d} ${BLN[m-1]} ${y}`}[TAB];
+}
+function renderTab(){
+  $("pageTitle").textContent = TITLES[TAB]; $("pageSub").textContent = subTitle();
+  try { RENDER[TAB](); } catch(e){ console.error(e); }
+}
+function goTab(t){
+  TAB = t;
+  document.querySelectorAll("#tabs button").forEach(x => x.classList.toggle("active", x.dataset.tab===t));
+  document.querySelectorAll(".tab").forEach(s => s.hidden = s.id !== "tab-"+t);
+  window.scrollTo(0,0); renderTab();
+}
+function renderPills(scope){
+  const list = scope ? [scope] : ["", ...D.areas];
+  $("areaPills").innerHTML = list.map(a => `<button data-a="${a}" class="${a===AREA?"on":""}" ${scope?"disabled":""}>${a ? title(a).replace("Area ","") : "Semua area"}</button>`).join("");
+  $("areaPills").querySelectorAll("button").forEach(b => b.onclick = () => { if (scope) return; AREA = b.dataset.a; renderPills(scope); renderTab(); });
+}
 function start(){
   prep();
+  const ORD = ["AREA DENPASAR","AREA KUTA","AREA MATARAM","AREA KUPANG"];
+  D.areas.sort((x,y) => (ORD.indexOf(x)+1||99) - (ORD.indexOf(y)+1||99));
   const scope = USER.akses && USER.akses !== "REGION" ? USER.akses : "";
-  const sel = $("areaSel");
-  sel.innerHTML = (scope ? "" : `<option value="">Semua Area (Region XI)</option>`) + D.areas.filter(a=>!scope||a===scope).map(a=>`<option value="${a}">${title(a)}</option>`).join("");
-  AREA = scope || (D.areas.includes(sel.value) ? sel.value : "");
-  sel.value = AREA; sel.disabled = !!scope;
+  if (scope) AREA = scope; else if (!D.areas.includes(AREA)) AREA = "";
+  renderPills(scope);
   opts($("edcSeg"), [...new Set(D.edc.cube.map(r=>r[2]))].sort());
   opts($("edcLob"), [...new Set(D.edc.cube.map(r=>r[3]))].sort());
   opts($("edcTipe"), [...new Set(D.edc.cube.map(r=>r[4]))].filter(v=>v!=="-").sort());
   opts($("lvmKelas"), [...new Set(Object.values(KELAS))].sort());
-  const {y,m,d} = lvmDate();
-  $("periodLine").textContent = `ATM s.d. ${BLN[D.atm.last]} ${D.atm.year} · EDC s.d. W${D.edc.week} ${D.edc.year} · Livin' Merchant s.d. ${d} ${BLN[m-1]} ${y}`;
-  $("userLine").textContent = USER.nama + (scope && title(scope)!==USER.nama ? " · "+title(scope) : "");
-  $("footLine").textContent = `Data diperbarui ${D.generated} · Sumber: ${D.sources.atm} | ${D.sources.edc} | ${D.sources.lvm}`;
+  $("userLine").textContent = USER.nama;
+  $("footLine").textContent = `Data diperbarui ${D.generated}`;
+  $("footLine").title = `Sumber: ${D.sources.atm}, ${D.sources.edc}, ${D.sources.lvm}`;
   $("login").hidden = true; $("app").hidden = false;
   renderTab();
 }
-$("areaSel").addEventListener("change", e => { AREA = e.target.value; renderTab(); });
-$("tabs").addEventListener("click", e => {
-  const b = e.target.closest("button[data-tab]"); if (!b) return;
-  document.querySelectorAll("#tabs button").forEach(x => x.classList.toggle("active", x===b));
-  document.querySelectorAll(".tab").forEach(s => s.hidden = s.id !== "tab-"+b.dataset.tab);
-  TAB = b.dataset.tab; renderTab();
-});
+$("tabs").addEventListener("click", e => { const b = e.target.closest("button[data-tab]"); if (b) goTab(b.dataset.tab); });
 ["atmJenis","atmGroup","atmMetric","edcSeg","edcLob","edcTipe","lvmKelas"].forEach(id => $(id).addEventListener("change", renderTab));
 })();

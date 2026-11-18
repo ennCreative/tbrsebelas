@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Transaction Banking Retail Region XI</title>
+<link rel="stylesheet" href="assets/style.css">
+
+</head>
+<body>
+
+<!-- ============ LOGIN ============ -->
+<section id="login" class="login">
+  <div class="login-card">
+    <div class="brand-mark">TBR</div>
+    <h1>Transaction Banking Retail</h1>
+    <p class="sub">Region XI &middot; Bali &amp; Nusa Tenggara</p>
+    <form id="loginForm" autocomplete="off">
+      <label for="code">Kode Login</label>
+      <input id="code" type="password" placeholder="Masukkan kode otorisasi" required autofocus>
+      <button type="submit" id="loginBtn">Masuk</button>
+      <p id="loginMsg" class="login-msg" role="alert"></p>
+    </form>
+    <p class="foot">Data terenkripsi &mdash; hanya dapat dibuka dengan kode otorisasi yang valid.</p>
+  </div>
+</section>
+
+<!-- ============ APP ============ -->
+<div id="app" hidden>
+  <header class="topbar">
+    <div class="tb-left">
+      <div class="brand-mark sm">TBR</div>
+      <div>
+        <div class="tb-title">Transaction Banking Retail Region XI</div>
+        <div class="tb-sub" id="periodLine"></div>
+      </div>
+    </div>
+    <div class="tb-right">
+      <label class="area-pick">Area
+        <select id="areaSel"></select>
+      </label>
+      <span class="user" id="userLine"></span>
+      <button class="ghost" id="logoutBtn">Keluar</button>
+    </div>
+  </header>
+
+  <nav class="tabs" id="tabs">
+    <button data-tab="ringkasan" class="active">Ringkasan</button>
+    <button data-tab="atm">ATM / CRM</button>
+    <button data-tab="edc">EDC Merchant</button>
+    <button data-tab="lvm">Livin' Merchant</button>
+    <button data-tab="cabang">Scorecard Cabang</button>
+  </nav>
+
+  <div id="banner" class="banner" hidden>
+    Data baru tersedia. <button id="reloadBtn">Muat data terbaru</button>
+  </div>
+
+  <main>
+    <!-- RINGKASAN -->
+    <section class="tab" id="tab-ringkasan">
+      <div class="kpis" id="sumKpis"></div>
+      <div class="grid g2">
+        <div class="card"><h3>Fee Based Income YTD per Area</h3><p class="note">ATM FBI + EDC MDFG + Livin' Merchant FBI</p><div class="chart"><div id="cSumFbi" class="mc"></div></div></div>
+        <div class="card"><h3>Pencapaian Target Livin' Merchant per Area</h3><p class="note">Akuisisi YTD vs target proporsional &amp; USAK vs target</p><div class="chart"><div id="cSumTgt" class="mc"></div></div></div>
+      </div>
+      <div class="card"><h3>Kinerja per Area</h3><div id="tSumArea"></div></div>
+    </section>
+
+    <!-- ATM -->
+    <section class="tab" id="tab-atm" hidden>
+      <div class="filters">
+        <label>Jenis <select id="atmJenis"><option value="">Semua</option><option>ATM</option><option>CRM</option></select></label>
+        <label>Lokasi <select id="atmGroup"><option value="">Semua</option><option>CABANG</option><option>PUBLIC AREA</option></select></label>
+        <label>Metrik grafik <select id="atmMetric"><option value="t">Transaksi</option><option value="v">Volume</option><option value="f">Fee Based Income</option></select></label>
+      </div>
+      <div class="kpis" id="atmKpis"></div>
+      <div class="grid g2">
+        <div class="card"><h3 id="atmTrendT">Tren Bulanan</h3><div class="chart"><div id="cAtmTrend" class="mc"></div></div></div>
+        <div class="card"><h3 id="atmAreaT">YTD per Area</h3><div class="chart"><div id="cAtmArea" class="mc"></div></div></div>
+      </div>
+      <div class="grid g2">
+        <div class="card"><h3>Kuadran CRM (bulan terakhir)</h3><p class="note">A Best Performance &middot; B FBI Driven &middot; C Trx Driven &middot; D Non Performing &middot; E Under Performing</p><div class="chart sm"><div id="cAtmQ1" class="mc"></div></div></div>
+        <div class="card"><h3>Tiering ATM Tunai (bulan terakhir)</h3><p class="note">Tier 1 terbaik &rarr; Tier 4 terendah</p><div class="chart sm"><div id="cAtmQ2" class="mc"></div></div></div>
+      </div>
+      <div class="card"><h3>Daftar Mesin</h3><div id="tAtm"></div></div>
+    </section>
+
+    <!-- EDC -->
+    <section class="tab" id="tab-edc" hidden>
+      <div class="filters">
+        <label>Segmen <select id="edcSeg"></select></label>
+        <label>LOB Fokus <select id="edcLob"></select></label>
+        <label>Tipe <select id="edcTipe"></select></label>
+      </div>
+      <div class="kpis" id="edcKpis"></div>
+      <div class="grid g2">
+        <div class="card"><h3>Sales Volume YTD per Area</h3><div class="chart"><div id="cEdcArea" class="mc"></div></div></div>
+        <div class="card"><h3>Historis Sales Volume (Full Year)</h3><p class="note">Filter area saja; tahun berjalan = YTD</p><div class="chart"><div id="cEdcHist" class="mc"></div></div></div>
+      </div>
+      <div class="grid g2">
+        <div class="card"><h3>Sales Volume YTD per Segmen</h3><div class="chart"><div id="cEdcSeg" class="mc"></div></div></div>
+        <div class="card"><h3>Kuadran Merchant (SV &amp; Funding)</h3><p class="note">Jumlah merchant; filter area saja</p><div class="chart"><div id="cEdcKuad" class="mc"></div></div></div>
+      </div>
+      <div class="card"><h3>Top Merchant EDC by Sales Volume</h3><div id="tEdcTop"></div></div>
+      <div class="card"><h3>Kinerja per LOB</h3><p class="note">Filter area saja</p><div id="tEdcLob"></div></div>
+    </section>
+
+    <!-- LVM -->
+    <section class="tab" id="tab-lvm" hidden>
+      <div class="filters">
+        <label>Kelas Cabang <select id="lvmKelas"></select></label>
+      </div>
+      <div class="kpis" id="lvmKpis"></div>
+      <div class="grid g2">
+        <div class="card"><h3>Akuisisi Merchant Baru per Bulan</h3><p class="note">Berdasarkan tanggal registrasi; garis = target bulanan</p><div class="chart"><div id="cLvmAcq" class="mc"></div></div></div>
+        <div class="card"><h3>Grading Transaksi Merchant</h3><div class="chart"><div id="cLvmGrade" class="mc"></div></div></div>
+      </div>
+      <div class="card"><h3>Ranking Pencapaian Cabang</h3><div id="tLvmRank"></div></div>
+      <div class="grid g2">
+        <div class="card"><h3>Kategori Usaha (LOB)</h3><div id="tLvmLob"></div></div>
+        <div class="card"><h3>Top Merchant by Sales Volume YTD</h3><div id="tLvmTop"></div></div>
+      </div>
+    </section>
+
+    <!-- CABANG -->
+    <section class="tab" id="tab-cabang" hidden>
+      <div class="card"><h3>Scorecard Cabang &mdash; seluruh produk TBR</h3><p class="note">ATM berdasarkan cabang mapping mesin; EDC berdasarkan cabang rekening; LVM berdasarkan cabang final.</p><div id="tCabang"></div></div>
+    </section>
+  </main>
+
+  <footer class="foot-app" id="footLine"></footer>
+</div>
+
+<div id="loading" class="loading" hidden><div class="spin"></div><span>Membuka data…</span></div>
+<script src="assets/charts.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>

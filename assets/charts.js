@@ -29,7 +29,8 @@ function render(el){
   const W = el.clientWidth, H = el.clientHeight; if (!W || !H) return;
   const {labels, series, fmt = v => v, horizontal = false, stacked = false} = cfg;
   el.innerHTML = "";
-  const showLegend = cfg.legend !== false && series.length > 1;
+  const SP = !!cfg.spark;
+  const showLegend = !SP && cfg.legend !== false && series.length > 1;
   if (showLegend){
     const lg = document.createElement("div"); lg.className = "mc-legend";
     lg.innerHTML = series.map(s => `<span><i style="background:${Array.isArray(s.color)?s.color[0]:s.color};${s.type==="line"?"height:3px;border-radius:2px":""}"></i>${s.label}</span>`).join("");
@@ -47,13 +48,13 @@ function render(el){
   const ticks = []; for (let v=0; v<=top+step/1e6; v+=step) ticks.push(v);
   const maxLab = Math.max(...labels.map(l => String(l).length));
   const tickW = Math.max(...ticks.map(t => String(fmt(t)).length)) * 6.6 + 10;
-  const m = horizontal ? {l:Math.min(170, maxLab*6.6+12), r:16, t:6, b:24} : {l:tickW, r:10, t:8, b: maxLab*6.6 > (W-tickW)/n ? 44 : 24};
+  const m = SP ? {l:0, r:0, t:2, b:1} : horizontal ? {l:Math.min(170, maxLab*6.6+12), r:16, t:6, b:24} : {l:tickW, r:10, t:8, b: maxLab*6.6 > (W-tickW)/n ? 44 : 24};
   const pw = W - m.l - m.r, ph = h - m.t - m.b;
   if (pw <= 10 || ph <= 10) return;
   const vs = v => (v/top) * (horizontal ? pw : ph);
   const g = mk("g"); svg.appendChild(g);
   // grid + ticks
-  for (const t of ticks){
+  if (!SP) for (const t of ticks){
     if (horizontal){
       const x = m.l + vs(t);
       g.appendChild(mk("line",{x1:x,x2:x,y1:m.t,y2:m.t+ph,stroke:GRID}));
@@ -90,7 +91,7 @@ function render(el){
     });
     // category label
     const lab = String(labels[i]);
-    if (horizontal){
+    if (SP) {} else if (horizontal){
       const t = mk("text",{x:m.l-8, y:c0+groupW/2+4, "text-anchor":"end", class:"mc-l"}); t.textContent = lab.length>26?lab.slice(0,25)+"…":lab; g.appendChild(t);
     } else {
       const cx = m.l + band*i + band/2;

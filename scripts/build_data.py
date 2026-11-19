@@ -231,14 +231,58 @@ def build_edc(path, branch_names):
         for (a, q), g in mm.groupby(["_a", mm[kq].fillna("-")]):
             kuad.append([a, str(q), int(len(g))])
     lob = []
-    for (a, l), g in df.groupby(["_a", df["LOB"].fillna("LAINNYA").astype(str).str.strip()]):
-        lob.append([a, l[:60], r(g["_merch"].sum()), r(g["_sv"].sum()), r(g["_svp"].sum()), r(g["_md"].sum())])
+    df["_lobd"] = df["LOB"].fillna("LAINNYA").astype(str).str.strip().replace({"0": "LAINNYA", "": "LAINNYA"})
+    for (a, c, l), g in df.groupby(["_a", "_c", "_lobd"]):
+        lob.append([a, c, l[:60], r(g["_merch"].sum()), r(g["_sv"].sum()), r(g["_svp"].sum()), r(g["_md"].sum())])
     top = df.nlargest(200, "_sv")
     tops = [dict(nm=str(x["mrchantdbaname"]).strip(), a=x["_a"], c=x["_c"], s=x["_s"], l=str(x.get("LOB", "") or "").strip(),
                  e=r(x["_edc"]), sv=r(x["_sv"]), svp=r(x["_svp"]), md=r(x["_md"]), tx=r(x["_tx"]), fd=r(x["_fd"]))
             for _, x in top.iterrows()]
     return dict(year=cy, week=w, cols=["a", "c", "s", "l", "tp"] + [m[1:] for m in meas],
-                cube=cube, hist=hist, kuad=kuad, lob=lob, top=tops)
+                cube=cube, hist=hist, kuad=kuad, lob=lob, top=tops), build_merchants(df, cy, w)
+
+
+def build_merchants(df, cy, w):
+    """Data per MID untuk menu Cari Merchant (disimpan di file terenkripsi terpisah)."""
+    def ids(col):
+        return [code(v) if pd.notna(v) else "" for v in df[col]] if col in df.columns else [""] * len(df)
+
+    def txt(col):
+        return [str(v).strip() if pd.notna(v) and str(v).strip() not in ("0", "nan") else "" for v in df[col]] if col in df.columns else [""] * len(df)
+
+    def mdr(col):
+        if col not in df.columns:
+            return [None] * len(df)
+        return [round(float(v), 3) if pd.notna(v) else None for v in pd.to_numeric(df[col], errors="coerce")]
+
+    years = sorted({int(m.group(2)) for c in df.columns if (m := re.match(r"YTD SV W(\d+) (\d{4})$", c))} - {cy})
+    fy_years = [y for y in years if y < cy]
+
+    def fycol(prefix, y):
+        for wk in (52, 53):
+            c = f"{prefix} W{wk} {y}"
+            if c in df.columns:
+                return c
+        return None
+
+    def series(cols):
+        out = []
+        for c in cols:
+            out.append([r(v) if v else 0 for v in num(df[c])] if c and c in df.columns else None)
+        return out
+
+    lab = [str(y) for y in fy_years] + [f"YTD W{w} {cy-1}", f"YTD W{w} {cy}", f"W{w-1} {cy}", f"W{w} {cy}"]
+    def pack(ytd, wk_prefix):
+        cols = [fycol(ytd, y) for y in fy_years] + [f"{ytd} W{w} {cy-1}", f"{ytd} W{w} {cy}",
+                                                     f"{wk_prefix} W{w-1} {cy}" if wk_prefix else None, f"{wk_prefix} W{w} {cy}" if wk_prefix else None]
+        return series(cols)
+    fund_cols = [fycol("Avg Fund", y) for y in fy_years] + [f"Avg Fund W{w} {cy-1}", f"Avg Fund W{w} {cy}", None, None]
+    log(f"EDC: {len(df)} MID untuk menu Cari Merchant")
+    return dict(year=cy, week=w, labels=lab, n=len(df),
+                nm=txt("mrchantdbaname"), on=txt("merchantofficialname"), mid=ids("mid_gab"), rek=ids("norekening"),
+                c=list(df["_c"]), a=list(df["_a"]), s=list(df["_s"]), l=txt("LOB"), l5=list(df["_l"]),
+                mc=mdr("MDR\nOffUsCredit"), mq=mdr("MDR QRIS OFF US"), edc=[r(v) for v in df["_edc"]],
+                sv=pack("YTD SV", "SV"), tx=pack("YTD TRX", "TRX"), md=pack("YTD MDFG", "MDFG"), fd=series(fund_cols))
 
 
 # ----------------------------------------------------------------- LVM
@@ -307,12 +351,18 @@ def load_codes(path):
     return codes
 
 
-def encrypt(payload, codes):
+def seal(dk, obj):
+    """Enkripsi satu paket data dengan kunci data (dk). Hasil: (dict, sha256 ringkas)."""
     b64 = lambda b: base64.b64encode(b).decode()
-    dk = AESGCM.generate_key(bit_length=256)
     iv = secrets.token_bytes(12)
-    raw = gzip.compress(json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8"), 9)
-    ct = AESGCM(dk).encrypt(iv, raw, None)
+    raw = gzip.compress(json.dumps(obj, ensure_ascii=False, separators=(",", ":")).encode("utf-8"), 9)
+    return dict(v=1, iv=b64(iv), ct=b64(AESGCM(dk).encrypt(iv, raw, None))), hashlib.sha256(raw).hexdigest()[:16]
+
+
+def encrypt(payload, codes, dk):
+    b64 = lambda b: base64.b64encode(b).decode()
+    body, h = seal(dk, payload)
+    iv, ct = body["iv"], body["ct"]
     salt = secrets.token_bytes(16)
     keys = []
     for c in codes:
@@ -321,8 +371,7 @@ def encrypt(payload, codes):
         inner = json.dumps(dict(k=b64(dk), n=c["nama"], s=c["akses"])).encode()
         keys.append(dict(iv=b64(kiv), ct=b64(AESGCM(kek).encrypt(kiv, inner, None))))
     secrets.SystemRandom().shuffle(keys)
-    return dict(v=1, kdf=dict(alg="PBKDF2-SHA256", salt=b64(salt), iter=PBKDF2_ITER), keys=keys,
-                iv=b64(iv), ct=b64(ct)), hashlib.sha256(raw).hexdigest()[:16]
+    return dict(v=1, kdf=dict(alg="PBKDF2-SHA256", salt=b64(salt), iter=PBKDF2_ITER), keys=keys, iv=iv, ct=ct), h
 
 
 def main():
@@ -343,20 +392,27 @@ def main():
         sources=dict(atm=os.path.basename(atm_f), edc=os.path.basename(edc_f), lvm=os.path.basename(lvm_f)),
         areas=sorted(set(AREA_BY_CODE.values())),
         atm=build_atm(atm_f, names),
-        edc=build_edc(edc_f, names),
+        edc=None,
         lvm=build_lvm(lvm_f, names),
         targets=targets,
     )
+    payload["edc"], merchants = build_edc(edc_f, names)
     payload["branches"] = {k: v for k, v in names.items() if k}
     codes = load_codes(a.codes)
-    enc, h = encrypt(payload, codes)
+    dk = AESGCM.generate_key(bit_length=256)
+    enc, h = encrypt(payload, codes, dk)
+    menc, mh = seal(dk, merchants)
+    h = hashlib.sha256((h + mh).encode()).hexdigest()[:16]
     os.makedirs(a.out, exist_ok=True)
+    with open(os.path.join(a.out, "merchant.enc.json"), "w", encoding="utf-8") as f:
+        json.dump(menc, f, separators=(",", ":"))
     with open(os.path.join(a.out, "data.enc.json"), "w", encoding="utf-8") as f:
         json.dump(enc, f, separators=(",", ":"))
     with open(os.path.join(a.out, "version.json"), "w", encoding="utf-8") as f:
         json.dump(dict(updated=payload["generated"], hash=h), f)
     size = os.path.getsize(os.path.join(a.out, "data.enc.json")) / 1024
-    log(f"SELESAI -> data/data.enc.json ({size:,.0f} KB, terenkripsi untuk {len(codes)} kode login)")
+    msize = os.path.getsize(os.path.join(a.out, "merchant.enc.json")) / 1024
+    log(f"SELESAI -> data/data.enc.json ({size:,.0f} KB) + data/merchant.enc.json ({msize:,.0f} KB), terenkripsi untuk {len(codes)} kode login")
 
 
 if __name__ == "__main__":

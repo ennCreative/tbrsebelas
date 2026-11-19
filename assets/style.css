@@ -203,3 +203,49 @@ tfoot td{font-weight:700;background:#f6f8fa;position:sticky;bottom:0;color:var(-
   .kpi .val{font-size:20px}
   .prod .p-val{font-size:28px}
 }
+
+/* ------------------------------------------------ tambahan v3 */
+.d-src{background:#fff;border-radius:50%}
+/* KPI EDC tetap terlihat saat halaman digulir */
+#edcKpis{position:sticky;top:0;z-index:6;box-shadow:0 6px 14px -10px rgba(14,42,71,.35)}
+/* tabel: tampil penuh (tanpa scroll vertikal di dalam tabel) */
+.tbl-wrap.full{max-height:none}
+/* kolom beku */
+.frz .fz{position:sticky;z-index:2;background:var(--paper)}
+.frz thead th.fz{z-index:4;background:#f6f8fa}
+.frz tfoot td.fz{background:#f6f8fa}
+.frz .fz-last{box-shadow:inset -1px 0 0 var(--line)}
+.frz tbody tr:hover td.fz{background:#f7f9fc}
+.filters.in-panel{margin:12px 0 0}
+/* tombol kembali ke atas */
+.to-top{position:fixed;right:22px;bottom:22px;width:46px;height:46px;border-radius:50%;border:0;background:var(--ink);color:#fff;font-size:20px;font-weight:700;box-shadow:0 6px 18px rgba(14,42,71,.3);opacity:0;pointer-events:none;transform:translateY(8px);transition:opacity .2s,transform .2s;z-index:30}
+.to-top.show{opacity:1;pointer-events:auto;transform:none}
+.to-top:hover{background:var(--ink-2)}
+/* cari merchant */
+.ms-lbl{font-size:13px;font-weight:700;color:var(--ink)}
+.ms-row{display:flex;gap:0;margin:8px 0 6px;max-width:760px;border:1.5px solid var(--line);border-radius:10px;overflow:hidden;background:#fafbfc}
+.ms-row:focus-within{border-color:var(--data);background:#fff}
+.ms-row select{border:0;border-right:1px solid var(--line);background:#f1f4f7;padding:11px 12px;font-weight:600;color:var(--ink);min-width:160px}
+.ms-row input{flex:1;border:0;background:transparent;padding:11px 14px;font-size:15px;min-width:0}
+.ms-row select:focus,.ms-row input:focus{outline:none}
+.ms-list tbody tr{cursor:pointer}
+.ms-list tbody tr.on td{background:#e8f1fc}
+#msDetail{scroll-margin-top:16px}
+.ms-head{padding:20px 22px}
+.ms-title{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.ms-title h2{margin:0;font-size:24px;font-weight:800;letter-spacing:-.02em;color:var(--ink)}
+.ms-fields{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px 24px;margin:18px 0 0}
+.ms-fields div{border-top:1px solid var(--grid);padding-top:8px}
+.ms-fields dt{font-size:12px;color:var(--muted);font-weight:600}
+.ms-fields dd{margin:2px 0 0;font-weight:600;color:var(--text);word-break:break-word}
+.ms-fields dd small{display:block;font-weight:500;color:var(--muted);font-size:12px}
+@media (max-width:900px){
+  #edcKpis{top:52px}
+  .ms-row{flex-direction:column}
+  .ms-row select{border-right:0;border-bottom:1px solid var(--line)}
+  .to-top{right:14px;bottom:14px}
+}
+#edcKpis .kpi{padding:11px 14px}
+#edcKpis .kpi .val{font-size:19px;white-space:nowrap;margin:2px 0}
+#edcKpis .kpi .lbl{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pager button:disabled{opacity:.4;cursor:default}

@@ -43,9 +43,10 @@
     <nav id="tabs" class="side-nav">
       <button data-tab="ringkasan" class="active"><i class="dot d-all"></i>Ringkasan</button>
       <button data-tab="atm"><i class="dot d-atm"></i>ATM &amp; CRM</button>
-      <button data-tab="edc"><i class="dot d-edc"></i>EDC Merchant</button>
+      <button data-tab="edc" id="navEdc"><i class="dot d-edc"></i>Merchant</button>
       <button data-tab="lvm"><i class="dot d-lvm"></i>Livin' Merchant</button>
       <button data-tab="cabang"><i class="dot d-cab"></i>Scorecard cabang</button>
+      <button data-tab="merchant"><i class="dot d-src"></i>Cari merchant</button>
     </nav>
     <div class="side-foot">
       <div class="who" id="userLine"></div>
@@ -116,7 +117,9 @@
         <div class="panel"><div class="panel-head"><h3>Kuadran merchant (SV &amp; funding)</h3><p>Jumlah merchant. Mengikuti filter area.</p></div><div class="chart"><div id="cEdcKuad" class="mc"></div></div></div>
       </div>
       <div class="panel"><div class="panel-head"><h3>Top merchant EDC berdasarkan sales volume</h3></div><div id="tEdcTop"></div></div>
-      <div class="panel"><div class="panel-head"><h3>Kinerja per LOB</h3><p>Mengikuti filter area.</p></div><div id="tEdcLob"></div></div>
+      <div class="panel"><div class="panel-head"><h3>Kinerja per LOB</h3></div>
+        <div class="filters in-panel"><label>Area <select id="lobArea"></select></label><label>Cabang <select id="lobCab"></select></label></div>
+        <div id="tEdcLob"></div></div>
     </section>
 
     <!-- LVM -->
@@ -136,6 +139,25 @@
       </div>
     </section>
 
+    <!-- CARI MERCHANT -->
+    <section class="tab" id="tab-merchant" hidden>
+      <div class="panel ms-search">
+        <label for="msQ" class="ms-lbl">Pencarian</label>
+        <div class="ms-row">
+          <select id="msField" aria-label="Cari berdasarkan">
+            <option value="nm">Nama merchant</option>
+            <option value="on">Official name</option>
+            <option value="mid">MID</option>
+            <option value="rek">No. rekening</option>
+          </select>
+          <input id="msQ" type="search" placeholder="Ketik nama, MID, atau nomor rekening" autocomplete="off">
+        </div>
+        <p id="msInfo" class="note"></p>
+        <div id="msResults"></div>
+      </div>
+      <div id="msDetail"></div>
+    </section>
+
     <!-- CABANG -->
     <section class="tab" id="tab-cabang" hidden>
       <div class="panel"><div class="panel-head"><h3>Kinerja cabang lintas produk</h3><p>ATM menurut cabang mapping mesin, EDC menurut cabang rekening, Livin' Merchant menurut cabang final.</p></div><div id="tCabang"></div></div>
@@ -143,6 +165,7 @@
   </div>
 </div>
 
+<button id="toTop" class="to-top" aria-label="Kembali ke atas" title="Kembali ke atas">↑</button>
 <div id="loading" class="loading" hidden><div class="spin"></div><span>Membuka data…</span></div>
 <script src="assets/charts.js"></script>
 <script src="assets/app.js"></script>

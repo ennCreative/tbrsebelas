@@ -256,3 +256,43 @@ tfoot td{font-weight:700;background:#f6f8fa;position:sticky;bottom:0;color:var(-
 .ms-modes button:hover{color:var(--ink);background:#f3f6f9}
 .ms-modes button.on{background:var(--ink);color:#fff}
 .ms-title .pill{margin-left:0}
+
+/* ------------------------------------------------ login, daftar, profil */
+.login-form{align-content:center}
+.login-form form,.login-form .done{width:100%;max-width:360px;padding:24px 0}
+.login-form label{display:block;margin-top:2px}
+.login-form input[type=text],.login-form input[type=password]{letter-spacing:0}
+.switch{font-size:13.5px;color:var(--text-2);margin:16px 0 0}
+.linkish{border:0;background:none;padding:0;color:var(--data);font-weight:700;width:auto!important;font-size:inherit!important}
+.login-form .linkish:hover{background:none;text-decoration:underline}
+.done h2{font-size:24px;margin:0 0 10px;color:var(--ink)}
+.done p{color:var(--text-2);margin:0 0 22px}
+.done button{width:100%;padding:13px;border:0;border-radius:10px;background:var(--ink);color:#fff;font-weight:700}
+.avatar{display:inline-grid;place-items:center;flex:none;width:64px;height:64px;border-radius:50%;background:#e6ecf3 center/cover no-repeat;color:var(--ink);font-weight:800;font-size:15px;overflow:hidden}
+.avatar.sm{width:34px;height:34px;font-size:12px}
+.avatar.has span{display:none}
+.avatar-pick{display:flex;gap:14px;align-items:center;margin:0 0 18px}
+.avatar-pick label.avatar{cursor:pointer;border:2px dashed #c3cdd8;margin:0;font-size:12px;color:var(--muted);font-weight:600}
+.avatar-pick label.avatar.has{border:2px solid var(--line)}
+.avatar-pick b{display:block;font-size:13px;color:var(--ink)}
+.avatar-pick span{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
+.avatar-pick input{font-size:12px;max-width:220px}
+.side-foot .me{display:flex;gap:10px;align-items:center;margin-bottom:8px}
+.side-foot .me .avatar{background-color:rgba(255,255,255,.14);color:#fff}
+.side-foot .me .who{margin:0}
+.side-foot .role{font-size:11.5px;color:#9fb1c4;line-height:1.3}
+.d-usr{background:#c79bf2}
+.badge{margin-left:auto;background:var(--gold);color:var(--ink);border-radius:10px;font-size:11px;padding:1px 7px;font-weight:800}
+.btn-sm{border:1px solid var(--line);background:var(--paper);border-radius:7px;padding:6px 12px;font-size:12.5px;font-weight:700;color:var(--text-2)}
+.btn-sm:hover{color:var(--ink);border-color:#c3cdd8}
+.btn-sm.pri{background:var(--ink);border-color:var(--ink);color:#fff}
+.btn-sm.danger{color:var(--bad)}
+.btn-sm:disabled{opacity:.6;cursor:default}
+.us-tbl td{vertical-align:middle}
+.us-tbl select{padding:5px 8px;border:1px solid var(--line);border-radius:7px;background:var(--paper)}
+.us-tbl select.st-menunggu{background:var(--mid-bg);color:var(--mid);font-weight:700}
+.us-tbl select.st-aktif{background:var(--good-bg);color:var(--good);font-weight:700}
+.us-tbl select.st-nonaktif{background:var(--bad-bg);color:var(--bad);font-weight:700}
+.us-who{display:flex;gap:10px;align-items:center}
+.us-act{display:flex;gap:6px}
+@media (max-width:900px){ .side-foot .me{display:none} .badge{margin-left:6px} }

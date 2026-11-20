@@ -37,22 +37,8 @@ const sum = (arr, f=x=>x) => arr.reduce((s,x)=>s+(+f(x)||0),0);
 const esc = s => String(s??"").replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const title = s => String(s||"").toLowerCase().replace(/\b\w/g,c=>c.toUpperCase());
 
-/* ------------------------------------------------------------------ crypto */
+/* ------------------------------------------------------------------ data terenkripsi */
 const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
-async function unlock(code){
-  const enc = await fetch("data/data.enc.json?t="+Date.now(),{cache:"no-store"}).then(r=>{ if(!r.ok) throw new Error("Data tidak ditemukan"); return r.json(); });
-  const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(code), "PBKDF2", false, ["deriveKey"]);
-  const kek = await crypto.subtle.deriveKey({name:"PBKDF2", salt:b64(enc.kdf.salt), iterations:enc.kdf.iter, hash:"SHA-256"},
-                                            base, {name:"AES-GCM", length:256}, false, ["decrypt"]);
-  let inner = null;
-  for (const k of enc.keys){
-    try { inner = JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({name:"AES-GCM", iv:b64(k.iv)}, kek, b64(k.ct)))); break; }
-    catch(e){ /* bukan kunci ini */ }
-  }
-  if (!inner) throw new Error("Kode login tidak valid");
-  const dk = await crypto.subtle.importKey("raw", b64(inner.k), "AES-GCM", false, ["decrypt"]);
-  return { user:{nama:inner.n, akses:inner.s}, data:await openBox(dk, enc), dk };
-}
 async function openBox(dk, box){
   const gz = await crypto.subtle.decrypt({name:"AES-GCM", iv:b64(box.iv)}, dk, b64(box.ct));
   return JSON.parse(await new Response(new Blob([gz]).stream().pipeThrough(new DecompressionStream("gzip"))).text());
@@ -72,30 +58,145 @@ async function fetchVersion(){
   try { return await fetch("data/version.json?t="+Date.now(),{cache:"no-store"}).then(r=>r.json()); } catch(e){ return null; }
 }
 
-/* ------------------------------------------------------------------ login flow */
-async function doLogin(code, silent){
-  $("loading").hidden = false; $("loginBtn").disabled = true; $("loginMsg").textContent = "";
-  try {
-    const res = await unlock(code);
-    D = res.data; USER = res.user; DK = res.dk; for (const k in BOX) delete BOX[k]; for (const k in BOX_P) delete BOX_P[k]; VERSION = await fetchVersion();
-    sessionStorage.setItem("tbr_code", code);
-    start();
-  } catch(e){
-    sessionStorage.removeItem("tbr_code");
-    if (!silent) $("loginMsg").textContent = e.message.includes("tidak valid") ? "Kode login tidak valid." : "Gagal memuat data: " + e.message;
-    $("login").hidden = false; $("app").hidden = true;
-  } finally { $("loading").hidden = true; $("loginBtn").disabled = false; }
+/* ------------------------------------------------------------------ server login (Supabase REST) */
+const CFG = window.TBR_CONFIG || {};
+const SBU = String(CFG.supabaseUrl || "").replace(/\/+$/, "");
+const USER_RE = /^[a-z0-9._]{3,30}$/;
+const toEmail = u => `${u}@${CFG.emailDomain || "users.tbr11.example.com"}`;
+let SESSION = null;
+class AuthErr extends Error {}
+async function sb(path, {method="GET", body, auth=true, headers={}, retry=true} = {}){
+  if (!SBU || !CFG.supabaseAnonKey) throw new AuthErr("Server login belum diatur. Isi assets/config.js sesuai panduan SETUP_LOGIN.md.");
+  const h = {apikey:CFG.supabaseAnonKey, "Content-Type":"application/json", ...headers,
+             Authorization:"Bearer " + (auth && SESSION ? SESSION.access_token : CFG.supabaseAnonKey)};
+  let r;
+  try { r = await fetch(SBU + path, {method, headers:h, body: body ? JSON.stringify(body) : undefined}); }
+  catch(e){ throw new AuthErr("Tidak bisa terhubung ke server login. Periksa koneksi internet."); }
+  if (r.status === 401 && auth && SESSION && retry){ await refreshSession(SESSION.refresh_token); return sb(path, {method, body, auth, headers, retry:false}); }
+  const t = await r.text(); let j = null; try { j = t ? JSON.parse(t) : null; } catch(e){}
+  if (!r.ok){
+    const err = new AuthErr((j && (j.msg || j.message || j.error_description || j.error)) || ("HTTP " + r.status));
+    err.status = r.status; err.code = j && (j.error_code || j.code); throw err;
+  }
+  return j;
 }
-$("loginForm").addEventListener("submit", e => { e.preventDefault(); doLogin($("code").value.trim()); });
-$("logoutBtn").addEventListener("click", () => { sessionStorage.removeItem("tbr_code"); location.reload(); });
-$("reloadBtn").addEventListener("click", () => { $("banner").hidden = true; doLogin(sessionStorage.getItem("tbr_code")); });
+function setSession(s){
+  SESSION = s && s.access_token ? s : null;
+  if (SESSION) sessionStorage.setItem("tbr_rt", SESSION.refresh_token); else sessionStorage.removeItem("tbr_rt");
+}
+async function refreshSession(rt){
+  setSession(await sb("/auth/v1/token?grant_type=refresh_token", {method:"POST", auth:false, body:{refresh_token:rt}}));
+}
+async function loadProfile(){
+  const r = await sb(`/rest/v1/profiles?id=eq.${SESSION.user.id}&select=*`);
+  if (!r || !r.length) throw new AuthErr("Profil akun tidak ditemukan. Hubungi admin.");
+  return r[0];
+}
+async function enterDashboard(p){
+  if (p.status === "menunggu") throw new AuthErr("Akun Anda masih menunggu persetujuan admin.");
+  if (p.status !== "aktif") throw new AuthErr("Akun Anda sedang dinonaktifkan. Hubungi admin.");
+  const keys = await sb("/rest/v1/app_keys?id=eq.1&select=k");
+  if (!keys || !keys.length) throw new AuthErr("Kunci data belum dipasang di server. Admin perlu menjalankan supabase_kunci.sql.");
+  const dk = await crypto.subtle.importKey("raw", b64(keys[0].k), "AES-GCM", false, ["decrypt"]);
+  const enc = await fetch("data/data.enc.json?t="+Date.now(), {cache:"no-store"}).then(r => { if (!r.ok) throw new AuthErr("File data dashboard tidak ditemukan."); return r.json(); });
+  try { D = await openBox(dk, enc); }
+  catch(e){ throw new AuthErr("Data dashboard tidak cocok dengan kunci di server. Pastikan file data dan supabase_kunci.sql berasal dari update yang sama."); }
+  USER = {nama:p.nama, akses:p.akses || "REGION", role:p.role, jabatan:p.jabatan, unit:p.unit_kerja, foto:p.foto, username:p.username};
+  DK = dk; for (const k in BOX) delete BOX[k]; for (const k in BOX_P) delete BOX_P[k];
+  VERSION = await fetchVersion();
+  start();
+}
+function busy(on){ $("loading").hidden = !on; $("loginBtn").disabled = on; $("signupBtn").disabled = on; }
+async function doLogin(username, password){
+  busy(true); $("loginMsg").textContent = "";
+  try {
+    const u = username.trim().toLowerCase();
+    if (!USER_RE.test(u)) throw new AuthErr("Username atau password salah.");
+    try { setSession(await sb("/auth/v1/token?grant_type=password", {method:"POST", auth:false, body:{email:toEmail(u), password}})); }
+    catch(e){ if (e.status === 400 || e.status === 401) throw new AuthErr("Username atau password salah."); throw e; }
+    await enterDashboard(await loadProfile());
+  } catch(e){
+    console.error(e); setSession(null);
+    $("loginMsg").textContent = e instanceof AuthErr ? e.message : "Gagal membuka dashboard: " + e.message;
+    showLogin();
+  } finally { busy(false); }
+}
+async function resume(){            // lanjutkan sesi setelah halaman di-refresh
+  const rt = sessionStorage.getItem("tbr_rt"); if (!rt) return;
+  busy(true);
+  try { await refreshSession(rt); await enterDashboard(await loadProfile()); }
+  catch(e){ setSession(null); showLogin(); }
+  finally { busy(false); }
+}
+function showLogin(){ $("login").hidden = false; $("app").hidden = true; }
+function showForm(which){
+  $("loginForm").hidden = which !== "login"; $("signupForm").hidden = which !== "signup"; $("signupDone").hidden = which !== "done";
+  $("loginMsg").textContent = ""; $("signupMsg").textContent = "";
+  const f = which === "signup" ? $("suNama") : which === "login" ? $("lgUser") : null; if (f) f.focus();
+}
+document.querySelectorAll("[data-go-form]").forEach(b => b.addEventListener("click", () => showForm(b.dataset.goForm)));
+
+/* ---- pendaftaran ---- */
+let SU_FOTO = null;
+function resizePhoto(file){          // potong persegi & perkecil ke 200 px, JPEG
+  return new Promise((ok, no) => {
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => { const s = Math.min(img.width, img.height), c = document.createElement("canvas"); c.width = c.height = 200;
+      c.getContext("2d").drawImage(img, (img.width-s)/2, (img.height-s)/2, s, s, 0, 0, 200, 200);
+      URL.revokeObjectURL(url); ok(c.toDataURL("image/jpeg", .82)); };
+    img.onerror = () => no(new AuthErr("File foto tidak bisa dibaca. Gunakan JPG atau PNG."));
+    img.src = url; });
+}
+$("suFoto").addEventListener("change", async e => {
+  const f = e.target.files[0]; SU_FOTO = null; $("suAvatar").style.backgroundImage = ""; $("suAvatar").classList.remove("has");
+  if (!f) return;
+  try { SU_FOTO = await resizePhoto(f); $("suAvatar").style.backgroundImage = `url(${SU_FOTO})`; $("suAvatar").classList.add("has"); }
+  catch(err){ $("signupMsg").textContent = err.message; }
+});
+$("signupForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const v = id => $(id).value.trim(), u = v("suUser").toLowerCase(), p = $("suPass").value;
+  const msg = $("signupMsg"); msg.textContent = "";
+  if (!USER_RE.test(u)) { msg.textContent = "Username 3–30 karakter: huruf kecil, angka, titik, atau garis bawah, tanpa spasi."; $("suUser").focus(); return; }
+  if (p.length < 6) { msg.textContent = "Password minimal 6 karakter."; $("suPass").focus(); return; }
+  if (p !== $("suPass2").value) { msg.textContent = "Ulangi password tidak sama."; $("suPass2").focus(); return; }
+  busy(true);
+  try {
+    const res = await sb("/auth/v1/signup", {method:"POST", auth:false,
+      body:{email:toEmail(u), password:p, data:{username:u, nama:v("suNama"), jabatan:v("suJabatan"), unit_kerja:v("suUnit")}}});
+    if (SU_FOTO && res && res.access_token){
+      setSession(res);
+      try { await sb(`/rest/v1/profiles?id=eq.${res.user.id}`, {method:"PATCH", body:{foto:SU_FOTO}, headers:{Prefer:"return=minimal"}}); } catch(err){ console.warn(err); }
+    }
+    setSession(null);
+    $("doneUser").textContent = u; $("signupForm").reset(); SU_FOTO = null; $("suAvatar").style.backgroundImage = ""; $("suAvatar").classList.remove("has");
+    showForm("done");
+  } catch(err){
+    console.error(err); setSession(null);
+    const t = String(err.message || "").toLowerCase();
+    msg.textContent = t.includes("already") || t.includes("registered") || t.includes("duplicate") || t.includes("saving new user") ? "Username sudah dipakai. Pilih username lain."
+      : t.includes("password") ? "Password terlalu lemah. Gunakan minimal 6 karakter."
+      : t.includes("signups not allowed") ? "Pendaftaran sedang ditutup admin."
+      : err instanceof AuthErr ? err.message : "Pendaftaran gagal: " + err.message;
+  } finally { busy(false); }
+});
+
+$("loginForm").addEventListener("submit", e => { e.preventDefault(); doLogin($("lgUser").value, $("lgPass").value); });
+$("logoutBtn").addEventListener("click", async () => {
+  try { if (SESSION) await sb("/auth/v1/logout", {method:"POST", retry:false}); } catch(e){}
+  setSession(null); location.reload();
+});
+$("reloadBtn").addEventListener("click", async () => {
+  $("banner").hidden = true; busy(true);
+  try { await enterDashboard(await loadProfile()); } catch(e){ alert(e.message); } finally { busy(false); }
+});
 setInterval(async () => {
   if (!D) return;
   const v = await fetchVersion();
   if (v && VERSION && v.hash !== VERSION.hash) $("banner").hidden = false;
 }, POLL_MS);
-const saved = sessionStorage.getItem("tbr_code");
-if (saved) doLogin(saved, true);
+if (!SBU || !CFG.supabaseAnonKey) $("loginMsg").textContent = "Server login belum diatur. Isi assets/config.js sesuai panduan SETUP_LOGIN.md.";
+resume();
 
 /* ------------------------------------------------------------------ helpers data */
 let BAREA = {}, KELAS = {};
@@ -385,9 +486,9 @@ function renderCabang(){
 
 /* ================================================================== CARI MERCHANT */
 const MS_MODES = {
-  edc:{label:"Merchant EDC & E-Commerce", box:"merchant",
+  edc:{label:"EDC & E-Commerce", box:"merchant",
        fields:[["nm","Nama merchant"],["on","Official name"],["mid","MID"],["rek","No. rekening"]]},
-  lvm:{label:"Merchant LVM", box:"lvm", fields:[["nm","Nama merchant"],["mid","MID"],["rek","No. rekening"]]},
+  lvm:{label:"Livin' Merchant", box:"lvm", fields:[["nm","Nama merchant"],["mid","MID"],["rek","No. rekening"]]},
   atm:{label:"ATM", box:null, fields:[["id","ID mesin"],["nm","Nama lokasi"]]},
 };
 const MS = {mode:"edc", sel:null, page:0};
@@ -611,6 +712,58 @@ function atmDetail(x){
     drawChart($("msa_"+kk), {labels:BLN.slice(0,n), fmt:kk==="t"?fN:fC, series:[S_("Nilai", x[kk], C.s1)]});
 }
 
+/* ================================================================== KELOLA PENGGUNA (admin) */
+let US_ROWS = [];
+const avatarHtml = (foto, nama, cls="") => foto
+  ? `<span class="avatar ${cls}" style="background-image:url(${foto})"></span>`
+  : `<span class="avatar ${cls}"><span>${esc(String(nama||"?").trim().split(/\s+/).slice(0,2).map(w=>w[0]||"").join("").toUpperCase())}</span></span>`;
+async function loadUsers(){
+  US_ROWS = await sb("/rest/v1/profiles?select=id,username,nama,jabatan,unit_kerja,foto,status,role,akses,created_at&order=created_at.desc") || [];
+  const pend = US_ROWS.filter(u => u.status === "menunggu").length;
+  $("pendBadge").hidden = !pend; $("pendBadge").textContent = pend;
+}
+async function renderUsers(){
+  if (USER.role !== "admin") { $("usList").innerHTML = `<p class="note">Menu ini hanya untuk admin.</p>`; return; }
+  $("usList").innerHTML = `<p class="note">Memuat daftar pengguna…</p>`;
+  try { await loadUsers(); } catch(e){ $("usList").innerHTML = `<p class="note">Gagal memuat: ${esc(e.message)}</p>`; return; }
+  drawUsers();
+}
+function drawUsers(){
+  const st = $("usStatus").value, rows = US_ROWS.filter(u => !st || u.status === st);
+  const opt = (vals, cur) => vals.map(([v,l]) => `<option value="${v}" ${v===cur?"selected":""}>${l}</option>`).join("");
+  const AKS = [["REGION","Seluruh Region XI"], ...D.areas.map(a=>[a, title(a)])];
+  $("usList").innerHTML = !rows.length ? `<p class="note">Tidak ada pengguna dengan status ini.</p>` :
+    `<div class="tbl-wrap full"><table class="us-tbl"><thead><tr><th>Pegawai</th><th>Jabatan</th><th>Unit kerja</th><th>Username</th><th>Terdaftar</th><th>Status</th><th>Akses</th><th>Peran</th><th></th></tr></thead><tbody>
+    ${rows.map(u => `<tr data-id="${u.id}">
+      <td><div class="us-who">${avatarHtml(u.foto, u.nama, "sm")}<b>${esc(u.nama)}</b></div></td>
+      <td>${esc(u.jabatan||"–")}</td><td>${esc(u.unit_kerja||"–")}</td><td>${esc(u.username)}</td>
+      <td>${new Date(u.created_at).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"})}</td>
+      <td><select data-f="status" class="st-${u.status}">${opt([["menunggu","Menunggu"],["aktif","Aktif"],["nonaktif","Nonaktif"]], u.status)}</select></td>
+      <td><select data-f="akses">${opt(AKS, u.akses)}</select></td>
+      <td><select data-f="role">${opt([["user","Pengguna"],["admin","Admin"]], u.role)}</select></td>
+      <td class="us-act"><button class="btn-sm pri" data-act="save">Simpan</button><button class="btn-sm danger" data-act="del" title="Hapus akun">Hapus</button></td>
+    </tr>`).join("")}</tbody></table></div>`;
+  $("usList").querySelectorAll("tr[data-id]").forEach(tr => {
+    const id = tr.dataset.id, u = US_ROWS.find(x => x.id === id);
+    tr.querySelector('[data-act="save"]').onclick = async ev => {
+      const b = ev.target, val = f => tr.querySelector(`[data-f="${f}"]`).value;
+      b.disabled = true; b.textContent = "Menyimpan…";
+      try { await sb("/rest/v1/rpc/admin_set_user", {method:"POST", body:{uid:id, p_status:val("status"), p_akses:val("akses"), p_role:val("role")}});
+            Object.assign(u, {status:val("status"), akses:val("akses"), role:val("role")}); b.textContent = "Tersimpan";
+            const pend = US_ROWS.filter(x => x.status === "menunggu").length; $("pendBadge").hidden = !pend; $("pendBadge").textContent = pend;
+            setTimeout(drawUsers, 700); }
+      catch(e){ alert("Gagal menyimpan: " + e.message); b.disabled = false; b.textContent = "Simpan"; }
+    };
+    tr.querySelector('[data-act="del"]').onclick = async () => {
+      if (!confirm(`Hapus akun ${u.username} (${u.nama})? Akun yang dihapus tidak bisa dikembalikan.`)) return;
+      try { await sb("/rest/v1/rpc/admin_delete_user", {method:"POST", body:{uid:id}}); US_ROWS = US_ROWS.filter(x => x.id !== id); drawUsers(); }
+      catch(e){ alert("Gagal menghapus: " + e.message); }
+    };
+  });
+}
+$("usStatus").addEventListener("change", drawUsers);
+$("usReload").addEventListener("click", renderUsers);
+
 /* ================================================================== RINGKASAN */
 function prodPanel({tab, color, name, per, lbl, val, cmp, subs, spark}){
   return `<button class="prod" data-go="${tab}" style="--pc:${color}">
@@ -680,9 +833,9 @@ function renderSummary(){
 }
 
 /* ================================================================== app */
-const RENDER = {ringkasan:renderSummary, atm:renderATM, edc:renderEDC, lvm:renderLVM, cabang:renderCabang, merchant:renderMerchant};
+const RENDER = {ringkasan:renderSummary, atm:renderATM, edc:renderEDC, lvm:renderLVM, cabang:renderCabang, merchant:renderMerchant, users:renderUsers};
 let TAB = "ringkasan";
-const TITLES = {ringkasan:"Ringkasan kinerja", atm:"ATM & CRM", edc:"EDC Merchant", lvm:"Livin' Merchant", cabang:"Scorecard cabang", merchant:"Cari merchant"};
+const TITLES = {ringkasan:"Ringkasan kinerja", atm:"ATM & CRM", edc:"EDC Merchant", lvm:"Livin' Merchant", cabang:"Scorecard cabang", merchant:"Cari merchant", users:"Kelola pengguna"};
 function subTitle(){
   const {y,m,d} = lvmDate();
   return {
@@ -691,7 +844,8 @@ function subTitle(){
     edc:`Year to date minggu ${D.edc.week} ${D.edc.year}, dibanding minggu yang sama ${D.edc.year-1}`,
     lvm:`Data sampai ${d} ${BLN[m-1]} ${y}`,
     cabang:`ATM ${BLN[D.atm.last]}, EDC minggu ${D.edc.week}, Livin' Merchant ${d} ${BLN[m-1]} ${y}`,
-    merchant:`Cari merchant EDC & e-commerce, merchant Livin', atau mesin ATM, lalu lihat performance lengkapnya`}[TAB];
+    merchant:`Cari merchant EDC & E-Commerce, Livin' Merchant, atau mesin ATM, lalu lihat performance lengkapnya`,
+    users:`Setujui pendaftaran, atur akses area, dan nonaktifkan akun`}[TAB];
 }
 function renderTab(){
   $("pageTitle").textContent = TITLES[TAB]; $("pageSub").textContent = subTitle();
@@ -721,6 +875,11 @@ function start(){
   opts($("lvmKelas"), [...new Set(Object.values(KELAS))].sort());
   $("navEdc").innerHTML = `<i class="dot d-edc"></i>Merchant W${D.edc.week} 🟢`;
   $("userLine").textContent = USER.nama;
+  $("roleLine").textContent = [USER.jabatan, USER.unit].filter(Boolean).join(", ");
+  $("meFoto").outerHTML = avatarHtml(USER.foto, USER.nama, "sm").replace('class="avatar sm"', 'class="avatar sm" id="meFoto"');
+  $("navUsers").hidden = USER.role !== "admin";
+  if (USER.role === "admin") loadUsers().catch(e => console.warn(e));
+  else if (TAB === "users") TAB = "ringkasan";
   $("footLine").textContent = `Data diperbarui ${D.generated}`;
   $("footLine").title = `Sumber: ${D.sources.atm}, ${D.sources.edc}, ${D.sources.lvm}`;
   $("login").hidden = true; $("app").hidden = false;

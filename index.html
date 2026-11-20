@@ -141,16 +141,12 @@
 
     <!-- CARI MERCHANT -->
     <section class="tab" id="tab-merchant" hidden>
+      <div class="ms-modes" id="msModes" role="tablist" aria-label="Jenis produk"></div>
       <div class="panel ms-search">
         <label for="msQ" class="ms-lbl">Pencarian</label>
         <div class="ms-row">
-          <select id="msField" aria-label="Cari berdasarkan">
-            <option value="nm">Nama merchant</option>
-            <option value="on">Official name</option>
-            <option value="mid">MID</option>
-            <option value="rek">No. rekening</option>
-          </select>
-          <input id="msQ" type="search" placeholder="Ketik nama, MID, atau nomor rekening" autocomplete="off">
+          <select id="msField" aria-label="Cari berdasarkan"></select>
+          <input id="msQ" type="search" placeholder="Ketik kata kunci pencarian" autocomplete="off">
         </div>
         <p id="msInfo" class="note"></p>
         <div id="msResults"></div>

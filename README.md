@@ -11,7 +11,7 @@ dengan **Kode Login (otorisasi)** dan data **terenkripsi**, di-hosting gratis me
 | EDC Merchant | Merchant & mesin EDC, merchant baru, SV / MDFG / Trx / Avg Fund YTD + YoY, SV mingguan, historis SV 2019–sekarang, segmen, kuadran, Top 200 merchant, kinerja per LOB |
 | Livin' Merchant | Merchant terdaftar & aktif, akuisisi YTD/MTD vs target, USAK vs target, SV/FBI, akuisisi per bulan, grading, ranking cabang, LOB, Top merchant |
 | Scorecard Cabang | Satu tabel per cabang lintas produk (ATM, EDC, LVM) |
-| Cari Merchant | Cari merchant EDC berdasarkan nama, official name, MID, atau no. rekening; tampil profil (cabang, segmen, LOB, MDR) dan grafik SV, frekuensi, MDFG, avg funding |
+| Cari Merchant | 3 sub-menu: Merchant EDC & E-Commerce (nama merchant, official name dengan total per grup, MID, no. rekening), Merchant LVM (nama, MID, no. rekening), dan ATM (ID mesin, nama lokasi); klik hasil untuk performance lengkap |
 
 Semua tabel bisa dicari, diurutkan (klik judul kolom) dan diunduh ke CSV. Filter Area berlaku di semua menu.
 
@@ -25,7 +25,8 @@ E:\Database TBR\
     ├── index.html                 halaman login + dashboard
     ├── assets\                    tampilan, grafik & logika (tanpa library eksternal)
     ├── data\data.enc.json         data olahan TERENKRIPSI (AES-256-GCM)
-    ├── data\merchant.enc.json     data per MID untuk menu Cari Merchant (terenkripsi, ±5 MB)
+    ├── data\merchant.enc.json     data per MID EDC untuk menu Cari Merchant (terenkripsi, ±5 MB)
+    ├── data\lvm.enc.json          data per merchant Livin' untuk menu Cari Merchant (terenkripsi, ±11 MB)
     ├── data\version.json          penanda versi (untuk notifikasi data baru)
     ├── scripts\build_data.py      pengolah Excel -> data terenkripsi
     ├── access_codes.csv           DAFTAR KODE LOGIN (lokal saja, di-.gitignore)

@@ -204,6 +204,13 @@ def build_edc(path, branch_names):
     df["_new"] = ((col("active") == cy) & (df["_merch"] > 0)).astype(int)
     for k, s in M.items():
         df["_" + k] = s
+    # Avg funding melekat ke rekening: satu rekening bisa punya banyak MID.
+    # Untuk total, hitung sekali per rekening (Count For Funding = 1), sama seperti Pivot di file Excel.
+    df["_fdraw"] = df["_fd"]
+    if "Count For Funding" in df.columns:
+        first = (col("Count For Funding") == 1).astype(float)
+        df["_fd"] = df["_fd"] * first
+        df["_fdp"] = df["_fdp"] * first
     df["_a"] = df["area"].map(norm_area)
     df["_c"] = df["cd_cbg"].map(code)
     df["_s"] = df["Segmen TBRS"].fillna("Lainnya").astype(str).str.replace(r"^\d+\.\s*", "", regex=True).str.strip().str.upper()
@@ -236,7 +243,7 @@ def build_edc(path, branch_names):
         lob.append([a, c, l[:60], r(g["_merch"].sum()), r(g["_sv"].sum()), r(g["_svp"].sum()), r(g["_md"].sum())])
     top = df.nlargest(200, "_sv")
     tops = [dict(nm=str(x["mrchantdbaname"]).strip(), a=x["_a"], c=x["_c"], s=x["_s"], l=str(x.get("LOB", "") or "").strip(),
-                 e=r(x["_edc"]), sv=r(x["_sv"]), svp=r(x["_svp"]), md=r(x["_md"]), tx=r(x["_tx"]), fd=r(x["_fd"]))
+                 e=r(x["_edc"]), sv=r(x["_sv"]), svp=r(x["_svp"]), md=r(x["_md"]), tx=r(x["_tx"]), fd=r(x["_fdraw"]))
             for _, x in top.iterrows()]
     return dict(year=cy, week=w, cols=["a", "c", "s", "l", "tp"] + [m[1:] for m in meas],
                 cube=cube, hist=hist, kuad=kuad, lob=lob, top=tops), build_merchants(df, cy, w)
@@ -324,7 +331,37 @@ def build_lvm(path, branch_names):
             for _, x in top.iterrows()]
     return dict(asof=asof.strftime("%Y-%m-%d"), year=cy,
                 cols=["a", "c", "g", "tg", "n", "act", "usak", "cls", "fqm", "svm", "fbm", "fqy", "svy", "fby", "bal"],
-                cube=cube, acq=acq, lob=lob, top=tops)
+                cube=cube, acq=acq, lob=lob, top=tops), build_lvm_merchants(df, asof)
+
+
+def build_lvm_merchants(df, asof):
+    """Data per merchant Livin' untuk menu Cari Merchant (file terenkripsi terpisah).
+    Nama pemilik & alamat tidak ikut."""
+    def cat(series):
+        vals = series.fillna("-").astype(str).str.strip()
+        labels = sorted(vals.unique())
+        idx = {v: i for i, v in enumerate(labels)}
+        return dict(k=labels, v=[idx[v] for v in vals])
+
+    def ids(col):
+        return [code(v) if pd.notna(v) else "" for v in df[col]]
+
+    def nums(col):
+        return [r(v) if v else 0 for v in num(df[col])] if col in df.columns else [0] * len(df)
+
+    log(f"LVM: {len(df)} merchant untuk menu Cari Merchant")
+    return dict(asof=asof.strftime("%Y-%m-%d"), n=len(df),
+                nm=[str(v).strip() if pd.notna(v) else "" for v in df["store_name"]],
+                mid=ids("mid_static"), mid2=ids("mid_dynamic"), rek=ids("account_number"),
+                c=list(df["_c"]), a=cat(df["_a"]), lob=cat(df["lob_lm"]), g=cat(df["_g"]), st=cat(df["status_trx"]),
+                u=list(df["_usak"]), sr=cat(df["status_rekening"]), ta=cat(df["tipe_akun"]), dg=cat(df["flag_card_dongle"]),
+                ct=cat(df["companytype"]), kab=cat(df["kabupaten"]), tg=cat(df["_tg"]),
+                d=[x.strftime("%Y-%m-%d") if pd.notna(x) else "" for x in df["_d"]],
+                fqm=nums("freq_mtd"), svm=nums("sv_mtd"), fbm=nums("fbi_mtd"),
+                fqy=nums("freq_ytd"), svy=nums("sv_ytd"), fby=nums("fbi_ytd"),
+                dfqy=nums("freq_ytd_card_dongle"), dsvy=nums("sv_ytd_card_dongle"), dfby=nums("fbi_ytd_card_dongle"),
+                bal=nums("Average Balance Tabungan"), balm=nums("growth_avgbal_rekening_mom"), baly=nums("growth_avgbal_rekening_yoy"),
+                cif=nums("Average Balance CIF"), cifm=nums("growth_avgbal_cif_mom"), cify=nums("growth_avgbal_cif_yoy"))
 
 
 # ----------------------------------------------------------------- ENKRIPSI
@@ -393,16 +430,21 @@ def main():
         areas=sorted(set(AREA_BY_CODE.values())),
         atm=build_atm(atm_f, names),
         edc=None,
-        lvm=build_lvm(lvm_f, names),
+        lvm=None,
         targets=targets,
     )
     payload["edc"], merchants = build_edc(edc_f, names)
+    payload["lvm"], lvm_merchants = build_lvm(lvm_f, names)
     payload["branches"] = {k: v for k, v in names.items() if k}
     codes = load_codes(a.codes)
     dk = AESGCM.generate_key(bit_length=256)
     enc, h = encrypt(payload, codes, dk)
     menc, mh = seal(dk, merchants)
-    h = hashlib.sha256((h + mh).encode()).hexdigest()[:16]
+    lenc, lh = seal(dk, lvm_merchants)
+    h = hashlib.sha256((h + mh + lh).encode()).hexdigest()[:16]
+    os.makedirs(a.out, exist_ok=True)
+    with open(os.path.join(a.out, "lvm.enc.json"), "w", encoding="utf-8") as f:
+        json.dump(lenc, f, separators=(",", ":"))
     os.makedirs(a.out, exist_ok=True)
     with open(os.path.join(a.out, "merchant.enc.json"), "w", encoding="utf-8") as f:
         json.dump(menc, f, separators=(",", ":"))
@@ -412,7 +454,8 @@ def main():
         json.dump(dict(updated=payload["generated"], hash=h), f)
     size = os.path.getsize(os.path.join(a.out, "data.enc.json")) / 1024
     msize = os.path.getsize(os.path.join(a.out, "merchant.enc.json")) / 1024
-    log(f"SELESAI -> data/data.enc.json ({size:,.0f} KB) + data/merchant.enc.json ({msize:,.0f} KB), terenkripsi untuk {len(codes)} kode login")
+    lsize = os.path.getsize(os.path.join(a.out, "lvm.enc.json")) / 1024
+    log(f"SELESAI -> data.enc.json ({size:,.0f} KB), merchant.enc.json ({msize:,.0f} KB), lvm.enc.json ({lsize:,.0f} KB); terenkripsi untuk {len(codes)} kode login")
 
 
 if __name__ == "__main__":

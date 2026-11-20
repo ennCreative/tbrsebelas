@@ -60,7 +60,8 @@ async function fetchVersion(){
 
 /* ------------------------------------------------------------------ server login (Supabase REST) */
 const CFG = window.TBR_CONFIG || {};
-const SBU = String(CFG.supabaseUrl || "").replace(/\/+$/, "");
+// cukup alamat dasar project (https://xxxx.supabase.co); buang tambahan seperti /rest/v1/ bila ikut tersalin
+const SBU = (() => { try { return new URL(String(CFG.supabaseUrl || "").trim()).origin; } catch(e){ return ""; } })();
 const USER_RE = /^[a-z0-9._]{3,30}$/;
 const toEmail = u => `${u}@${CFG.emailDomain || "users.tbr11.example.com"}`;
 let SESSION = null;

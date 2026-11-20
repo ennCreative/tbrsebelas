@@ -21,15 +21,48 @@
     <ul class="login-areas"><li>Denpasar</li><li>Kuta</li><li>Mataram</li><li>Kupang</li></ul>
   </div>
   <div class="login-form">
-    <form id="loginForm" autocomplete="off">
+    <form id="loginForm" autocomplete="on">
       <h2>Masuk ke dashboard</h2>
-      <p class="hint">Gunakan kode otorisasi yang diberikan pengelola dashboard.</p>
-      <label for="code">Kode login</label>
-      <input id="code" type="password" placeholder="TBR-XXXXXX-XXXX" required autofocus>
+      <p class="hint">Gunakan username dan password akun Anda.</p>
+      <label for="lgUser">Username</label>
+      <input id="lgUser" name="username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus>
+      <label for="lgPass">Password</label>
+      <input id="lgPass" name="password" type="password" autocomplete="current-password" required>
       <button type="submit" id="loginBtn">Masuk</button>
       <p id="loginMsg" class="login-msg" role="alert"></p>
-      <p class="secure">Data terenkripsi dan hanya terbuka dengan kode yang valid.</p>
+      <p class="switch">Belum punya akun? <button type="button" class="linkish" data-go-form="signup">Daftar di sini</button></p>
     </form>
+
+    <form id="signupForm" autocomplete="off" hidden>
+      <h2>Daftar akun</h2>
+      <p class="hint">Akun aktif setelah disetujui admin.</p>
+      <div class="avatar-pick">
+        <label for="suFoto" class="avatar" id="suAvatar" title="Pilih foto profil"><span>Foto</span></label>
+        <div><b>Foto profil</b><span>Opsional. JPG atau PNG, akan diperkecil otomatis.</span>
+          <input id="suFoto" type="file" accept="image/*"></div>
+      </div>
+      <label for="suNama">Nama pegawai</label>
+      <input id="suNama" type="text" required maxlength="80">
+      <label for="suJabatan">Jabatan</label>
+      <input id="suJabatan" type="text" required maxlength="80">
+      <label for="suUnit">Unit kerja</label>
+      <input id="suUnit" type="text" required maxlength="80" placeholder="mis. Area Denpasar / KCP Kuta Raya">
+      <label for="suUser">Username</label>
+      <input id="suUser" type="text" required autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="huruf kecil, angka, titik atau garis bawah">
+      <label for="suPass">Password</label>
+      <input id="suPass" type="password" required minlength="6" autocomplete="new-password" placeholder="minimal 6 karakter">
+      <label for="suPass2">Ulangi password</label>
+      <input id="suPass2" type="password" required minlength="6" autocomplete="new-password">
+      <button type="submit" id="signupBtn">Daftar</button>
+      <p id="signupMsg" class="login-msg" role="alert"></p>
+      <p class="switch">Sudah punya akun? <button type="button" class="linkish" data-go-form="login">Masuk</button></p>
+    </form>
+
+    <div id="signupDone" class="done" hidden>
+      <h2>Pendaftaran terkirim</h2>
+      <p>Akun <b id="doneUser"></b> sudah tercatat dan sedang menunggu persetujuan admin. Setelah disetujui, Anda bisa masuk dengan username dan password tadi.</p>
+      <button type="button" data-go-form="login">Kembali ke halaman masuk</button>
+    </div>
   </div>
 </section>
 
@@ -47,9 +80,10 @@
       <button data-tab="lvm"><i class="dot d-lvm"></i>Livin' Merchant</button>
       <button data-tab="cabang"><i class="dot d-cab"></i>Scorecard cabang</button>
       <button data-tab="merchant"><i class="dot d-src"></i>Cari merchant</button>
+      <button data-tab="users" id="navUsers" hidden><i class="dot d-usr"></i>Kelola pengguna <b class="badge" id="pendBadge" hidden></b></button>
     </nav>
     <div class="side-foot">
-      <div class="who" id="userLine"></div>
+      <div class="me"><div class="avatar sm" id="meFoto"></div><div><div class="who" id="userLine"></div><div class="role" id="roleLine"></div></div></div>
       <div class="upd" id="footLine"></div>
       <button class="out" id="logoutBtn">Keluar</button>
     </div>
@@ -154,6 +188,15 @@
       <div id="msDetail"></div>
     </section>
 
+    <!-- KELOLA PENGGUNA (admin) -->
+    <section class="tab" id="tab-users" hidden>
+      <div class="filters">
+        <label>Status <select id="usStatus"><option value="">Semua</option><option value="menunggu" selected>Menunggu persetujuan</option><option value="aktif">Aktif</option><option value="nonaktif">Nonaktif</option></select></label>
+        <button class="btn-sm" id="usReload">Muat ulang</button>
+      </div>
+      <div class="panel"><div class="panel-head"><h3>Daftar pengguna</h3><p>Setujui pendaftaran dengan mengubah status menjadi Aktif, pilih akses (seluruh Region atau satu area), lalu klik Simpan.</p></div><div id="usList"></div></div>
+    </section>
+
     <!-- CABANG -->
     <section class="tab" id="tab-cabang" hidden>
       <div class="panel"><div class="panel-head"><h3>Kinerja cabang lintas produk</h3><p>ATM menurut cabang mapping mesin, EDC menurut cabang rekening, Livin' Merchant menurut cabang final.</p></div><div id="tCabang"></div></div>
@@ -163,6 +206,7 @@
 
 <button id="toTop" class="to-top" aria-label="Kembali ke atas" title="Kembali ke atas">↑</button>
 <div id="loading" class="loading" hidden><div class="spin"></div><span>Membuka data…</span></div>
+<script src="assets/config.js"></script>
 <script src="assets/charts.js"></script>
 <script src="assets/app.js"></script>
 </body>

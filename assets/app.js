@@ -57,15 +57,16 @@ async function openBox(dk, box){
   const gz = await crypto.subtle.decrypt({name:"AES-GCM", iv:b64(box.iv)}, dk, b64(box.ct));
   return JSON.parse(await new Response(new Blob([gz]).stream().pipeThrough(new DecompressionStream("gzip"))).text());
 }
-let DK = null, MER = null, MER_P = null;
-function loadMerchants(){
-  if (MER) return Promise.resolve(MER);
-  if (!MER_P) MER_P = fetch("data/merchant.enc.json?t="+Date.now(),{cache:"no-store"})
-    .then(r => { if (!r.ok) throw new Error("File data merchant tidak ditemukan"); return r.json(); })
+let DK = null;
+const BOX = {}, BOX_P = {};
+function loadBox(name){            // file data terenkripsi tambahan, dimuat saat dibutuhkan
+  if (BOX[name]) return Promise.resolve(BOX[name]);
+  if (!BOX_P[name]) BOX_P[name] = fetch(`data/${name}.enc.json?t=`+Date.now(),{cache:"no-store"})
+    .then(r => { if (!r.ok) throw new Error(`file data/${name}.enc.json tidak ditemukan`); return r.json(); })
     .then(box => openBox(DK, box))
-    .then(m => { MER = m; m.idx = {nm:m.nm.map(x=>x.toLowerCase()), on:m.on.map(x=>x.toLowerCase())}; return m; })
-    .catch(e => { MER_P = null; throw e; });
-  return MER_P;
+    .then(m => { BOX[name] = m; return m; })
+    .catch(e => { delete BOX_P[name]; throw e; });
+  return BOX_P[name];
 }
 async function fetchVersion(){
   try { return await fetch("data/version.json?t="+Date.now(),{cache:"no-store"}).then(r=>r.json()); } catch(e){ return null; }
@@ -76,7 +77,7 @@ async function doLogin(code, silent){
   $("loading").hidden = false; $("loginBtn").disabled = true; $("loginMsg").textContent = "";
   try {
     const res = await unlock(code);
-    D = res.data; USER = res.user; DK = res.dk; MER = null; MER_P = null; VERSION = await fetchVersion();
+    D = res.data; USER = res.user; DK = res.dk; for (const k in BOX) delete BOX[k]; for (const k in BOX_P) delete BOX_P[k]; VERSION = await fetchVersion();
     sessionStorage.setItem("tbr_code", code);
     start();
   } catch(e){
@@ -383,89 +384,231 @@ function renderCabang(){
 }
 
 /* ================================================================== CARI MERCHANT */
-let MS_SEL = -1, MS_PAGE = 0;
+const MS_MODES = {
+  edc:{label:"Merchant EDC & E-Commerce", box:"merchant",
+       fields:[["nm","Nama merchant"],["on","Official name"],["mid","MID"],["rek","No. rekening"]]},
+  lvm:{label:"Merchant LVM", box:"lvm", fields:[["nm","Nama merchant"],["mid","MID"],["rek","No. rekening"]]},
+  atm:{label:"ATM", box:null, fields:[["id","ID mesin"],["nm","Nama lokasi"]]},
+};
+const MS = {mode:"edc", sel:null, page:0};
 const MS_PER = 10;
 const digits = v => String(v||"").replace(/\D/g,"");
-function mdrText(m,i){
-  const p = [];
-  if (m.mc[i] != null) p.push(`Off-us kartu kredit ${String(m.mc[i]).replace(".",",")}%`);
-  if (m.mq[i] != null) p.push(`QRIS off-us ${String(m.mq[i]).replace(".",",")}%`);
-  return p.join("; ") || "–";
+const cv = (o,i) => o.k[o.v[i]];                        // nilai kategori (data LVM)
+const gtag = v => v==null ? "–" : `<span class="${v>=0?"up":"down"}">${v>=0?"▲":"▼"} ${fP(Math.abs(v))}</span>`;
+const fieldHtml = (k,v) => `<div><dt>${k}</dt><dd>${v}</dd></div>`;
+function msModes(){
+  $("msModes").innerHTML = Object.entries(MS_MODES).map(([k,c]) => `<button data-m="${k}" class="${k===MS.mode?"on":""}">${c.label}</button>`).join("");
+  $("msModes").querySelectorAll("button").forEach(b => b.onclick = () => {
+    if (MS.mode === b.dataset.m) return;
+    MS.mode = b.dataset.m; MS.sel = null; MS.page = 0; $("msQ").value = "";
+    msModes(); renderMerchant(); $("msQ").focus(); });
+  const f = $("msField"), cur = f.value;
+  f.innerHTML = MS_MODES[MS.mode].fields.map(([k,l]) => `<option value="${k}">${l}</option>`).join("");
+  if (MS_MODES[MS.mode].fields.some(x=>x[0]===cur)) f.value = cur;
 }
-const mv = (m,k,j,i) => (m[k][j] ? m[k][j][i] : null);
 async function renderMerchant(){
-  $("msInfo").textContent = MER ? "" : "Menyiapkan data merchant…";
-  try { await loadMerchants(); }
-  catch(e){ $("msInfo").textContent = "Gagal memuat data merchant: " + e.message; return; }
+  msModes();
+  const cfg = MS_MODES[MS.mode];
+  if (cfg.box && !BOX[cfg.box]){
+    $("msResults").innerHTML = ""; $("msDetail").innerHTML = "";
+    $("msInfo").textContent = `Menyiapkan data ${cfg.label}…`;
+    try { await loadBox(cfg.box); }
+    catch(e){ $("msInfo").textContent = "Gagal memuat data: " + e.message; return; }
+  }
   $("msInfo").textContent = "";
   msSearch();
 }
-function msSearch(){
-  const m = MER; if (!m) return;
-  const f = $("msField").value, raw = $("msQ").value.trim();
+function msSource(){
+  const mode = MS.mode, f = $("msField").value;
+  if (mode === "atm") {
+    const ms = D.atm.machines;
+    return {n:ms.length, area:i=>ms[i].a, text:i => f==="id" ? ms[i].id.toLowerCase() : ms[i].nm.toLowerCase(), num:false,
+            score:i => sum(ms[i].f), total:D.atm.machines.length};
+  }
+  const m = BOX[MS_MODES[mode].box]; m._lc = m._lc || {};
   const isNum = f==="mid" || f==="rek";
-  const q = isNum ? digits(raw) : raw.toLowerCase();
-  const L = m.labels.length, iY = L-3;           // indeks YTD tahun berjalan
-  if (q.length < 3){
-    $("msResults").innerHTML = `<p class="note">Ketik minimal 3 karakter untuk mulai mencari ${fN(m.n)} MID merchant EDC${AREA?` di ${title(AREA)}`:""}.</p>`;
-    if (MS_SEL < 0) $("msDetail").innerHTML = "";
+  if (!isNum && !m._lc[f]) m._lc[f] = m[f].map(x => (x||"").toLowerCase());
+  if (mode === "edc"){
+    const iY = m.labels.length-3;
+    return {n:m.n, area:i=>m.a[i], text: isNum ? i=>m[f][i] : i=>m._lc[f][i], num:isNum, score:i => mv(m,"sv",iY,i)||0};
+  }
+  return {n:m.n, area:i=>cv(m.a,i), text: f==="mid" ? i=>m.mid[i]+" "+m.mid2[i] : isNum ? i=>m[f][i] : i=>m._lc[f][i], num:isNum, score:i=>m.svy[i]};
+}
+function msSearch(){
+  const mode = MS.mode, f = $("msField").value, src = msSource();
+  const raw = $("msQ").value.trim(), q = src.num ? digits(raw) : raw.toLowerCase();
+  const what = {edc:"MID merchant EDC & e-commerce", lvm:"merchant Livin'", atm:"mesin ATM & CRM"}[mode];
+  if (q.length < (mode==="atm" ? 2 : 3)){
+    $("msResults").innerHTML = `<p class="note">Ketik minimal ${mode==="atm"?2:3} karakter untuk mencari di antara ${fN(src.n)} ${what}${AREA?` di ${title(AREA)}`:""}.</p>`;
+    if (!MS.sel) $("msDetail").innerHTML = "";
     return;
   }
-  const src = isNum ? m[f] : m.idx[f], hits = [];
-  for (let i=0;i<m.n;i++){
-    if (!inArea(m.a[i])) continue;
-    const v = src[i]; if (!v) continue;
-    if (isNum ? v.includes(q) : v.includes(q)) hits.push(i);
+  let hits = [];
+  for (let i=0;i<src.n;i++){ if (!inArea(src.area(i))) continue; const t = src.text(i); if (t && t.includes(q)) hits.push(i); }
+  hits.sort((x,y) => src.score(y) - src.score(x));
+  let items, cols;
+  const m = mode==="atm" ? null : BOX[MS_MODES[mode].box];
+  if (mode==="edc" && f==="on"){            // grup per official name
+    const g = new Map();
+    for (const i of hits){ const k = (m.on[i]||"").toUpperCase(); if (!g.has(k)) g.set(k, []); g.get(k).push(i); }
+    items = [...g.entries()].map(([k,idx]) => ({kind:"grp", key:k, idx, sv:sum(idx, i=>src.score(i))})).sort((a,b)=>b.sv-a.sv);
+    cols = [["Official name", x=>esc(m.on[x.idx[0]])], ["Jumlah MID", x=>fN(x.idx.length), 1],
+            ["Cabang pengelola", x=>{ const cs=[...new Set(x.idx.map(i=>m.c[i]))]; return cs.length>1 ? `${cs.length} cabang` : esc(cs[0]+" - "+bn(cs[0])); }],
+            ["SV YTD W"+m.week, x=>fC(x.sv), 1]];
+  } else if (mode==="edc"){
+    items = hits.map(i => ({kind:"edc", i}));
+    cols = [["Nama merchant", x=>esc(m.nm[x.i]||"–")], ["MID", x=>m.mid[x.i]||"–"], ["Official name", x=>esc(m.on[x.i]||"–")],
+            ["Cabang pengelola", x=>esc(m.c[x.i]+" - "+bn(m.c[x.i]))], ["SV YTD W"+m.week, x=>fC(src.score(x.i)), 1]];
+  } else if (mode==="lvm"){
+    items = hits.map(i => ({kind:"lvm", i}));
+    cols = [["Nama merchant", x=>esc(m.nm[x.i]||"–")], ["MID", x=>m.mid[x.i]||"–"], ["Cabang pengelola", x=>esc(m.c[x.i]+" - "+bn(m.c[x.i]))],
+            ["Grading", x=>esc(cv(m.g,x.i))], ["SV YTD", x=>fC(m.svy[x.i]), 1]];
+  } else {
+    const ms = D.atm.machines;
+    items = hits.map(i => ({kind:"atm", i}));
+    cols = [["ID mesin", x=>esc(ms[x.i].id)], ["Nama lokasi", x=>esc(ms[x.i].nm)], ["Jenis", x=>`<span class="pill">${ms[x.i].j}</span>`],
+            ["Cabang pengelola", x=>esc(ms[x.i].c+" - "+bn(ms[x.i].c))], ["FBI YTD", x=>fC(sum(ms[x.i].f)), 1]];
   }
-  hits.sort((x,y) => (mv(m,"sv",iY,y)||0) - (mv(m,"sv",iY,x)||0));
-  const pages = Math.max(1, Math.ceil(hits.length/MS_PER)); MS_PAGE = Math.min(MS_PAGE, pages-1);
-  const shown = hits.slice(MS_PAGE*MS_PER, MS_PAGE*MS_PER+MS_PER);
-  $("msResults").innerHTML = !hits.length ? `<p class="note">Tidak ada merchant yang cocok. Periksa ejaan, atau ganti jenis pencarian di sebelah kiri kolom.</p>` :
-    `<p class="note">${fN(hits.length)} hasil, diurutkan dari sales volume terbesar. Klik baris untuk melihat detail.</p>
-    <div class="tbl-wrap full"><table class="ms-list"><thead><tr><th>Nama merchant</th><th>MID</th><th>Official name</th><th>Cabang pengelola</th><th class="num">SV YTD W${m.week}</th></tr></thead>
-    <tbody>${shown.map(i=>`<tr data-i="${i}" class="${i===MS_SEL?"on":""}"><td>${esc(m.nm[i]||"–")}</td><td>${m.mid[i]||"–"}</td><td>${esc(m.on[i]||"–")}</td><td>${esc(m.c[i]+" - "+bn(m.c[i]))}</td><td class="num">${fC(mv(m,"sv",iY,i)||0)}</td></tr>`).join("")}</tbody></table></div>
-    ${pages>1?`<div class="pager"><button data-mp="-1" ${MS_PAGE?"":"disabled"}>‹</button> Hal ${MS_PAGE+1} / ${fN(pages)} <button data-mp="1" ${MS_PAGE<pages-1?"":"disabled"}>›</button></div>`:""}`;
-  $("msResults").querySelectorAll("[data-mp]").forEach(b => b.onclick = () => { MS_PAGE += +b.dataset.mp; msSearch(); });
-  $("msResults").querySelectorAll("tr[data-i]").forEach(tr => tr.onclick = () => { MS_SEL = +tr.dataset.i; msSearch(); msDetail(MS_SEL); $("msDetail").scrollIntoView({behavior:"smooth", block:"start"}); });
-  if (hits.length === 1 && MS_SEL !== hits[0]) { MS_SEL = hits[0]; msDetail(MS_SEL); }
-  else if (MS_SEL >= 0) msDetail(MS_SEL);
+  const key = x => x.kind==="grp" ? "g:"+x.key : x.kind+":"+x.i;
+  const pages = Math.max(1, Math.ceil(items.length/MS_PER)); MS.page = Math.min(MS.page, pages-1);
+  const shown = items.slice(MS.page*MS_PER, MS.page*MS_PER+MS_PER);
+  const unit = mode==="edc" && f==="on" ? "official name" : "hasil";
+  $("msResults").innerHTML = !items.length ? `<p class="note">Tidak ada yang cocok. Periksa ejaan, atau ganti jenis pencarian di sebelah kiri kolom.</p>` :
+    `<p class="note">${fN(items.length)} ${unit}${mode==="edc"&&f==="on"?` (${fN(hits.length)} MID)`:""}, diurutkan dari ${mode==="atm"?"FBI":"sales volume"} terbesar. Klik baris untuk melihat performance lengkap.</p>
+    <div class="tbl-wrap full"><table class="ms-list"><thead><tr>${cols.map(c=>`<th class="${c[2]?"num":""}">${c[0]}</th>`).join("")}</tr></thead>
+    <tbody>${shown.map((x,n)=>`<tr data-n="${MS.page*MS_PER+n}" class="${MS.sel && key(MS.sel)===key(x)?"on":""}">${cols.map(c=>`<td class="${c[2]?"num":""}">${c[1](x)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>
+    ${pages>1?`<div class="pager"><button data-mp="-1" ${MS.page?"":"disabled"}>‹</button> Hal ${MS.page+1} / ${fN(pages)} <button data-mp="1" ${MS.page<pages-1?"":"disabled"}>›</button></div>`:""}`;
+  $("msResults").querySelectorAll("[data-mp]").forEach(b => b.onclick = () => { MS.page += +b.dataset.mp; msSearch(); });
+  $("msResults").querySelectorAll("tr[data-n]").forEach(tr => tr.onclick = () => {
+    MS.sel = items[+tr.dataset.n]; msSearch(); $("msDetail").scrollIntoView({behavior:"smooth", block:"start"}); });
+  if (items.length === 1 && (!MS.sel || key(MS.sel)!==key(items[0]))) MS.sel = items[0];
+  if (MS.sel && MS.sel.kind !== {edc:(f==="on"?"grp":"edc"), lvm:"lvm", atm:"atm"}[mode] && !(mode==="edc" && MS.sel.kind==="edc")) MS.sel = null;
+  msShow();
 }
-function msDetail(i){
-  const m = MER, L = m.labels.length, iY = L-3, iP = L-4, iW = L-1, iW1 = L-2, w = m.week, y = m.year;
-  const val = (k,j) => mv(m,k,j,i);
-  const field = (k,v) => `<div><dt>${k}</dt><dd>${v}</dd></div>`;
+function msShow(){
+  const x = MS.sel; if (!x) { $("msDetail").innerHTML = ""; return; }
+  if (x.kind === "edc") edcDetail([x.i], null);
+  else if (x.kind === "grp") edcDetail(x.idx, x.key);
+  else if (x.kind === "lvm") lvmDetail(x.i);
+  else atmDetail(D.atm.machines[x.i]);
+}
+
+/* ---- EDC & e-commerce: satu MID, atau grup official name ---- */
+const mv = (m,k,j,i) => (m[k][j] ? m[k][j][i] : null);
+function mdrList(m, idx){
+  const a = [...new Set(idx.map(i=>m.mc[i]).filter(v=>v!=null))], b = [...new Set(idx.map(i=>m.mq[i]).filter(v=>v!=null))];
+  const f = arr => arr.length ? arr.sort((x,y)=>x-y).map(v=>String(v).replace(".",",")+"%").join(" / ") : null;
+  const p = []; if (f(a)) p.push(`Off-us kartu kredit ${f(a)}`); if (f(b)) p.push(`QRIS off-us ${f(b)}`);
+  return p.join("; ") || "–";
+}
+function listText(arr, fmt=v=>v){
+  const u = [...new Set(arr.filter(Boolean))];
+  if (!u.length) return "–";
+  return u.slice(0,3).map(v=>esc(fmt(v))).join("<br>") + (u.length>3 ? `<small>dan ${u.length-3} lainnya</small>` : "");
+}
+function edcDetail(idx, groupKey){
+  const m = BOX.merchant, L = m.labels.length, iY = L-3, iP = L-4, iW = L-1, iW1 = L-2, w = m.week, y = m.year;
+  const single = idx.length === 1 && !groupKey, i0 = idx[0];
+  // jumlahkan per label; avg funding dihitung sekali per rekening
+  const tot = {};
+  for (const k of ["sv","tx","md","fd"]) tot[k] = m.labels.map((_,j) => {
+    if (!m[k][j]) return null;
+    if (k !== "fd") return sum(idx, i => m[k][j][i]);
+    const seen = new Set(); let s = 0;
+    for (const i of idx){ const r = m.rek[i]; if (r && seen.has(r)) continue; if (r) seen.add(r); s += m[k][j][i]; }
+    return s; });
+  const val = (k,j) => tot[k][j];
   const wk = (k,fmt) => `W${w}: ${fmt(val(k,iW)||0)} ${grHtml(val(k,iW)||0, val(k,iW1)||0, `vs W${w-1}`)}`;
+  const areasTxt = [...new Set(idx.map(i=>m.a[i]))].map(title).join(", ");
+  const head = single
+    ? `<h2>${esc(m.nm[i0]||"–")}</h2><span class="pill">${esc(areasTxt)}</span>`
+    : `<h2>${esc(m.on[i0]||groupKey)}</h2><span class="pill">${fN(idx.length)} MID</span><span class="pill">${esc(areasTxt)}</span>`;
+  const fields = single ? [
+      ["Nama merchant", esc(m.nm[i0]||"–")], ["MID", m.mid[i0]||"–"], ["Official name", esc(m.on[i0]||"–")],
+      ["Cabang pengelola", esc(m.c[i0]+" - "+bn(m.c[i0]))], ["Segment", esc(m.s[i0]||"–")],
+      ["LOB", esc(m.l[i0]||"–") + (m.l5[i0] && m.l5[i0]!=="Lainnya" ? `<small>LOB fokus: ${esc(m.l5[i0])}</small>` : "")],
+      ["MDR", mdrList(m,[i0])], ["No. rekening", m.rek[i0]||"–"], ["Jumlah EDC", fN(m.edc[i0])]]
+    : [
+      ["Official name", esc(m.on[i0]||"–")], ["Jumlah MID", fN(idx.length)],
+      ["Jumlah nama merchant", fN(new Set(idx.map(i=>m.nm[i])).size)],
+      ["Cabang pengelola", listText(idx.map(i=>m.c[i]), c=>c+" - "+bn(c))], ["Segment", listText(idx.map(i=>m.s[i]))],
+      ["LOB", listText(idx.map(i=>m.l[i]))], ["MDR", mdrList(m,idx)],
+      ["No. rekening", `${fN(new Set(idx.map(i=>m.rek[i]).filter(Boolean)).size)} rekening`], ["Jumlah EDC", fN(sum(idx,i=>m.edc[i]))]];
+  const members = single ? "" : `<div class="panel"><div class="panel-head"><h3>Merchant dalam official name ini</h3><p>Klik baris untuk melihat performance per MID</p></div><div id="msMembers"></div></div>`;
   $("msDetail").innerHTML = `
-    <div class="panel ms-head">
-      <div class="ms-title"><h2>${esc(m.nm[i]||"–")}</h2><span class="pill">${esc(title(m.a[i]))}</span></div>
-      <dl class="ms-fields">
-        ${field("Nama merchant", esc(m.nm[i]||"–"))}
-        ${field("MID", m.mid[i]||"–")}
-        ${field("Official name", esc(m.on[i]||"–"))}
-        ${field("Cabang pengelola", esc(m.c[i]+" - "+bn(m.c[i])))}
-        ${field("Segment", esc(m.s[i]||"–"))}
-        ${field("LOB", esc(m.l[i]||"–") + (m.l5[i] && m.l5[i]!=="Lainnya" ? `<small>LOB fokus: ${esc(m.l5[i])}</small>` : ""))}
-        ${field("MDR", mdrText(m,i))}
-        ${field("No. rekening", m.rek[i]||"–")}
-        ${field("Jumlah EDC", fN(m.edc[i]))}
-      </dl>
-    </div>
+    <div class="panel ms-head"><div class="ms-title">${head}</div><dl class="ms-fields">${fields.map(f=>fieldHtml(f[0],f[1])).join("")}</dl></div>
     <div class="kpis">
       ${kpi(`Sales volume YTD W${w} ${y}`, fRp(val("sv",iY)||0), grHtml(val("sv",iY)||0, val("sv",iP)||0, `dibanding ${y-1}`) + "<br>" + wk("sv",fRp))}
       ${kpi(`Frekuensi YTD W${w} ${y}`, fN(val("tx",iY)||0), grHtml(val("tx",iY)||0, val("tx",iP)||0, `dibanding ${y-1}`) + "<br>" + wk("tx",fN))}
       ${kpi(`MDFG YTD W${w} ${y}`, fRp(val("md",iY)||0), grHtml(val("md",iY)||0, val("md",iP)||0, `dibanding ${y-1}`) + "<br>" + wk("md",fRp))}
-      ${kpi(`Avg funding W${w} ${y}`, fRp(val("fd",iY)||0), grHtml(val("fd",iY)||0, val("fd",iP)||0, `dibanding W${w} ${y-1}`))}
+      ${kpi(`Avg funding W${w} ${y}`, fRp(val("fd",iY)||0), grHtml(val("fd",iY)||0, val("fd",iP)||0, `dibanding W${w} ${y-1}`) + (single?"":"<br>dihitung sekali per rekening"))}
     </div>
     <div class="grid g2">
       ${[["sv","Sales volume (SV)"],["tx","Frekuensi transaksi"],["md","MDFG"],["fd","Avg funding"]].map(([k,t]) =>
         `<div class="panel"><div class="panel-head"><h3>${t}</h3><p>Full year per tahun, lalu YTD minggu ${w} ${y-1} dan ${y}</p></div><div class="chart sm"><div id="msc_${k}" class="mc"></div></div></div>`).join("")}
-    </div>`;
+    </div>${members}`;
   const labs = m.labels.slice(0, L-2).map(l => l.replace(`YTD W${w} `, "YTD "));
-  const cols = labs.map((_,j) => j === L-3 ? C.s2 : j === L-4 ? C.prev : "#f5b49a");
-  for (const k of ["sv","tx","md","fd"]){
-    const fmt = k==="tx" ? fN : fC;
-    drawChart($("msc_"+k), {labels:labs, fmt, series:[S_({sv:"Sales volume",tx:"Frekuensi",md:"MDFG",fd:"Avg funding"}[k], labs.map((_,j)=>val(k,j)), cols)]});
+  const colr = labs.map((_,j) => j === L-3 ? C.s2 : j === L-4 ? C.prev : "#f5b49a");
+  for (const k of ["sv","tx","md","fd"])
+    drawChart($("msc_"+k), {labels:labs, fmt:k==="tx"?fN:fC, series:[S_({sv:"Sales volume",tx:"Frekuensi",md:"MDFG",fd:"Avg funding"}[k], labs.map((_,j)=>val(k,j)), colr)]});
+  if (!single){
+    table($("msMembers"), {sort:"sv", page:15, full:true, search:idx.length>15, csv:"merchant_"+(m.on[i0]||"grup").slice(0,30), rows:idx.map(i=>({i, nm:m.nm[i], mid:m.mid[i], c:m.c[i], s:m.s[i], sv:mv(m,"sv",iY,i)||0, svp:mv(m,"sv",iP,i)||0, md:mv(m,"md",iY,i)||0})), cols:[
+      {k:"nm",l:"Nama merchant"}, {k:"mid",l:"MID"}, {k:"cb",l:"Cabang pengelola",v:x=>x.c+" - "+bn(x.c)}, {k:"s",l:"Segment"},
+      {k:"svp",l:`SV YTD ${y-1}`,num:1,f:fC}, {k:"sv",l:`SV YTD ${y}`,num:1,f:fC}, {k:"g",l:"Growth",num:1,v:x=>gr(x.sv,x.svp),h:(x,v)=>gtag(v)}, {k:"md",l:"MDFG YTD",num:1,f:fC}]});
+    $("msMembers").addEventListener("click", e => { const tr = e.target.closest("tbody tr"); if (!tr) return;
+      const mid = tr.children[1].textContent, i = idx.find(i => m.mid[i]===mid); if (i==null) return;
+      MS.sel = {kind:"edc", i}; msShow(); $("msDetail").scrollIntoView({behavior:"smooth", block:"start"}); });
   }
+}
+
+/* ---- Livin' Merchant ---- */
+function lvmDetail(i){
+  const m = BOX.lvm, [y,mo,d] = m.asof.split("-").map(Number);
+  const prevM = BLN[(mo+10)%12] + " " + (mo===1?y-1:y), curM = `${BLN[mo-1]} ${y}`, lyM = `${BLN[mo-1]} ${y-1}`;
+  const pct = (g, now) => (now-g) ? g/(now-g) : null;
+  const fields = [
+    ["Nama merchant", esc(m.nm[i]||"–")], ["MID static", m.mid[i]||"–"], ["MID dynamic", m.mid2[i]||"–"], ["No. rekening", m.rek[i]||"–"],
+    ["Cabang pengelola", esc(m.c[i]+" - "+bn(m.c[i]))], ["LOB", esc(cv(m.lob,i))], ["Kabupaten/kota", esc(cv(m.kab,i))],
+    ["Tanggal registrasi", m.d[i] ? m.d[i].split("-").reverse().join("-") : "–"], ["Jenis usaha", esc(cv(m.ct,i))], ["Tipe akun", esc(cv(m.ta,i))],
+    ["Status transaksi", esc(cv(m.st,i))], ["Grading", esc(cv(m.g,i))], ["USAK", m.u[i] ? "Ya" : "Tidak"],
+    ["Status rekening", esc(cv(m.sr,i))], ["Card dongle", esc(cv(m.dg,i))], ["Tagging akuisisi", esc(cv(m.tg,i))]];
+  const dongle = m.dsvy[i] || m.dfqy[i];
+  $("msDetail").innerHTML = `
+    <div class="panel ms-head"><div class="ms-title"><h2>${esc(m.nm[i]||"–")}</h2><span class="pill">${esc(title(cv(m.a,i)))}</span><span class="pill">${esc(cv(m.g,i))}</span></div>
+      <dl class="ms-fields">${fields.map(f=>fieldHtml(f[0],f[1])).join("")}</dl></div>
+    <div class="kpis">
+      ${kpi("Frekuensi YTD", fN(m.fqy[i]), `MTD ${BLN[mo-1]}: ${fN(m.fqm[i])}` + (dongle?`<br>Card dongle YTD: ${fN(m.dfqy[i])}`:""))}
+      ${kpi("Sales volume YTD", fRp(m.svy[i]), `MTD ${BLN[mo-1]}: ${fRp(m.svm[i])}` + (dongle?`<br>Card dongle YTD: ${fRp(m.dsvy[i])}`:""))}
+      ${kpi("Fee based income YTD", fRp(m.fby[i]), `MTD ${BLN[mo-1]}: ${fRp(m.fbm[i])}` + (dongle?`<br>Card dongle YTD: ${fRp(m.dfby[i])}`:""))}
+      ${kpi("Avg balance tabungan", fRp(m.bal[i]), `${gtag(pct(m.balm[i],m.bal[i]))} MoM<br>${gtag(pct(m.baly[i],m.bal[i]))} YoY`)}
+      ${kpi("Avg balance CIF", fRp(m.cif[i]), `${gtag(pct(m.cifm[i],m.cif[i]))} MoM<br>${gtag(pct(m.cify[i],m.cif[i]))} YoY`)}
+    </div>
+    <div class="grid g2">
+      <div class="panel"><div class="panel-head"><h3>Avg balance tabungan</h3><p>${lyM}, ${prevM}, dan ${curM}</p></div><div class="chart sm"><div id="msl_bal" class="mc"></div></div></div>
+      <div class="panel"><div class="panel-head"><h3>Avg balance CIF</h3><p>${lyM}, ${prevM}, dan ${curM}</p></div><div class="chart sm"><div id="msl_cif" class="mc"></div></div></div>
+    </div>`;
+  const labs = [lyM, prevM, curM], cols = [C.prev, "#86d9b9", C.s3];
+  drawChart($("msl_bal"), {labels:labs, fmt:fC, series:[S_("Avg balance tabungan", [m.bal[i]-m.baly[i], m.bal[i]-m.balm[i], m.bal[i]], cols)]});
+  drawChart($("msl_cif"), {labels:labs, fmt:fC, series:[S_("Avg balance CIF", [m.cif[i]-m.cify[i], m.cif[i]-m.cifm[i], m.cif[i]], cols)]});
+}
+
+/* ---- ATM / CRM per ID mesin ---- */
+function atmDetail(x){
+  const A = D.atm, n = A.last+1, L = BLN[A.last];
+  const k = (lbl, key, fmt) => kpi(`${lbl} YTD ${A.year}`, fmt(sum(x[key])), `${L}: ${fmt(x[key][n-1])} ${n>1?grHtml(x[key][n-1], x[key][n-2], "MoM"):""}`);
+  const crm = x.j === "CRM";
+  $("msDetail").innerHTML = `
+    <div class="panel ms-head"><div class="ms-title"><h2>${esc(x.nm)}</h2><span class="pill">${x.j}</span><span class="pill">${esc(title(x.a))}</span></div>
+      <dl class="ms-fields">${[["ID mesin", esc(x.id)], ["Nama lokasi", esc(x.nm)], ["Jenis", x.j], ["Tipe mesin", esc(x.ms||"–")],
+        ["Lokasi", esc(title(x.g))], ["Kota", esc(x.kt||"–")], ["Cabang pengelola", esc(x.c+" - "+bn(x.c))], ["Area", esc(title(x.a))],
+        [crm?`Kuadran ${L}`:`Tier ${L}`, esc(x.q)]].map(f=>fieldHtml(f[0],f[1])).join("")}</dl></div>
+    <div class="kpis">${k("Transaksi","t",fN)}${k("Volume","v",fRp)}${k("Fee based income","f",fRp)}${crm ? k("Volume setor tunai","vs",fRp) + k("Transaksi setor tunai","ts",fN) : ""}</div>
+    <div class="grid g2">
+      ${[["t","Transaksi per bulan"],["v","Volume per bulan"],["f","Fee based income per bulan"]].concat(crm?[["vs","Volume setor tunai per bulan"]]:[]).map(([kk,t]) =>
+        `<div class="panel"><div class="panel-head"><h3>${t}</h3><p>Januari–${L} ${A.year}</p></div><div class="chart sm"><div id="msa_${kk}" class="mc"></div></div></div>`).join("")}
+    </div>`;
+  for (const kk of ["t","v","f"].concat(crm?["vs"]:[]))
+    drawChart($("msa_"+kk), {labels:BLN.slice(0,n), fmt:kk==="t"?fN:fC, series:[S_("Nilai", x[kk], C.s1)]});
 }
 
 /* ================================================================== RINGKASAN */
@@ -548,7 +691,7 @@ function subTitle(){
     edc:`Year to date minggu ${D.edc.week} ${D.edc.year}, dibanding minggu yang sama ${D.edc.year-1}`,
     lvm:`Data sampai ${d} ${BLN[m-1]} ${y}`,
     cabang:`ATM ${BLN[D.atm.last]}, EDC minggu ${D.edc.week}, Livin' Merchant ${d} ${BLN[m-1]} ${y}`,
-    merchant:`Profil dan kinerja merchant EDC per MID, data minggu ${D.edc.week} ${D.edc.year}`}[TAB];
+    merchant:`Cari merchant EDC & e-commerce, merchant Livin', atau mesin ATM, lalu lihat performance lengkapnya`}[TAB];
 }
 function renderTab(){
   $("pageTitle").textContent = TITLES[TAB]; $("pageSub").textContent = subTitle();
@@ -587,8 +730,8 @@ $("tabs").addEventListener("click", e => { const b = e.target.closest("button[da
 ["atmJenis","atmGroup","atmMetric","edcSeg","edcLob","edcTipe","lvmKelas"].forEach(id => $(id).addEventListener("change", renderTab));
 $("lobArea").addEventListener("change", () => { $("lobCab").value = ""; renderEdcLob(); });
 $("lobCab").addEventListener("change", renderEdcLob);
-let msT; $("msQ").addEventListener("input", () => { clearTimeout(msT); msT = setTimeout(() => { MS_SEL = -1; MS_PAGE = 0; msSearch(); }, 200); });
-$("msField").addEventListener("change", () => { MS_SEL = -1; MS_PAGE = 0; msSearch(); $("msQ").focus(); });
+let msT; $("msQ").addEventListener("input", () => { clearTimeout(msT); msT = setTimeout(() => { MS.sel = null; MS.page = 0; msSearch(); }, 200); });
+$("msField").addEventListener("change", () => { MS.sel = null; MS.page = 0; msSearch(); $("msQ").focus(); });
 const toTop = $("toTop");
 window.addEventListener("scroll", () => { toTop.classList.toggle("show", window.scrollY > 500); }, {passive:true});
 toTop.addEventListener("click", () => window.scrollTo({top:0, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth"}));

@@ -98,7 +98,12 @@ async function enterDashboard(p){
   if (p.status !== "aktif") throw new AuthErr("Akun Anda sedang dinonaktifkan. Hubungi admin.");
   const keys = await sb("/rest/v1/app_keys?id=eq.1&select=k");
   if (!keys || !keys.length) throw new AuthErr("Kunci data belum dipasang di server. Admin perlu menjalankan supabase_kunci.sql.");
-  const dk = await crypto.subtle.importKey("raw", b64(keys[0].k), "AES-GCM", false, ["decrypt"]);
+  let dk;
+  try {
+    const raw = b64(String(keys[0].k).replace(/\s+/g, ""));
+    if (raw.length !== 32) throw 0;
+    dk = await crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["decrypt"]);
+  } catch(e){ throw new AuthErr("Kunci data di server tidak valid. Admin perlu menjalankan ulang isi file _rahasia\\supabase_kunci.sql (salin langsung dari file, jangan diketik ulang)."); }
   const enc = await fetch("data/data.enc.json?t="+Date.now(), {cache:"no-store"}).then(r => { if (!r.ok) throw new AuthErr("File data dashboard tidak ditemukan."); return r.json(); });
   try { D = await openBox(dk, enc); }
   catch(e){ throw new AuthErr("Data dashboard tidak cocok dengan kunci di server. Pastikan file data dan supabase_kunci.sql berasal dari update yang sama."); }
@@ -114,7 +119,12 @@ async function doLogin(username, password){
     const u = username.trim().toLowerCase();
     if (!USER_RE.test(u)) throw new AuthErr("Username atau password salah.");
     try { setSession(await sb("/auth/v1/token?grant_type=password", {method:"POST", auth:false, body:{email:toEmail(u), password}})); }
-    catch(e){ if (e.status === 400 || e.status === 401) throw new AuthErr("Username atau password salah."); throw e; }
+    catch(e){
+      const t = (String(e.code||"") + " " + String(e.message||"")).toLowerCase();
+      if (t.includes("not_confirmed") || t.includes("not confirmed")) throw new AuthErr("Akun belum terkonfirmasi. Admin perlu mematikan \"Confirm email\" di Supabase, lalu daftar ulang.");
+      if (t.includes("invalid") || e.status === 400 || e.status === 401) throw new AuthErr("Username atau password salah. Pastikan akun sudah didaftarkan lewat \"Daftar di sini\" dan huruf besar/kecil password sama persis.");
+      throw new AuthErr("Login gagal: " + e.message);
+    }
     await enterDashboard(await loadProfile());
   } catch(e){
     console.error(e); setSession(null);

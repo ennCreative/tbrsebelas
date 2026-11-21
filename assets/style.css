@@ -263,8 +263,14 @@ tfoot td{font-weight:700;background:#f6f8fa;position:sticky;bottom:0;color:var(-
 .login-form label{display:block;margin-top:2px}
 .login-form input[type=text],.login-form input[type=password]{letter-spacing:0}
 .switch{font-size:13.5px;color:var(--text-2);margin:16px 0 0}
-.linkish{border:0;background:none;padding:0;color:var(--data);font-weight:700;width:auto!important;font-size:inherit!important}
-.login-form .linkish:hover{background:none;text-decoration:underline}
+.login-form .linkish,.login-form .linkish:hover,.login-form .linkish:focus{display:inline;width:auto;padding:0;border:0;border-radius:0;background:none;color:var(--data);font-weight:700;font-size:inherit;text-decoration:none}
+.login-form .linkish:hover{text-decoration:underline;text-underline-offset:3px}
+.dev-contact{display:flex;align-items:center;gap:10px;margin-top:22px;padding:11px 14px;border:1px solid var(--line);border-radius:10px;color:var(--text-2);font-size:13px;text-decoration:none;max-width:360px;width:100%}
+.dev-contact:hover{border-color:#25d366;background:#f3fcf6;color:var(--ink)}
+.dev-contact svg{flex:none}
+.dev-contact b{color:var(--ink)}
+.side-foot .dev-link{display:flex;align-items:center;gap:6px;color:#9fb1c4;font-size:11.5px;text-decoration:none;margin:0 0 10px}
+.side-foot .dev-link:hover{color:#fff}
 .done h2{font-size:24px;margin:0 0 10px;color:var(--ink)}
 .done p{color:var(--text-2);margin:0 0 22px}
 .done button{width:100%;padding:13px;border:0;border-radius:10px;background:var(--ink);color:#fff;font-weight:700}

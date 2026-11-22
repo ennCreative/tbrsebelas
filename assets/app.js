@@ -327,17 +327,18 @@ function renderATM(){
   const crmQ = ["A","B","C","D","E","F"], atmQ = ["Tier 1","Tier 2","Tier 3","Tier 4","F"];
   chart("cAtmQ1", {labels:crmQ.map(q=>"Kuadran "+q), fmt:fN, series:[S_("Jumlah CRM", qc(crmQ,"CRM"), C.s1)]});
   chart("cAtmQ2", {labels:atmQ, fmt:fN, series:[S_("Jumlah ATM", qc(atmQ,"ATM"), C.s1)]});
+  renderQSeries(x.ms, n);
 
   if (MAP.sel && !x.ms.some(m => m.id === MAP.sel)) { MAP.sel = null; $("atmMapDetail").innerHTML = ""; }
   renderAtmMap(x.ms);
   table($("tAtm"), {csv:"mesin_atm", sort:"fy", cols:[
     {k:"id",l:"ID Mesin"}, {k:"nm",l:"Nama Lokasi"}, {k:"j",l:"Jenis", h:(m,v)=>`<span class="pill">${v}</span>`}, {k:"g",l:"Lokasi"},
-    {k:"a",l:"Area",f:title}, {k:"cb",l:"Cabang",v:m=>bn(m.c)}, {k:"q",l:`Kuadran ${L}`},
+    {k:"a",l:"Area",f:title}, {k:"cb",l:"Cabang",v:m=>bn(m.c)}, {k:"q",l:`Kuadran ${L}`, h:(m,v)=>qChip(v)}, {k:"qs",l:"Series kuadran", v:m=>(m.qs||[]).join(" "), h:m=>qStrip(m.qs)},
     {k:"ty",l:"Trx YTD",num:1,v:m=>mYtd(m,"t"),f:fN}, {k:"vy",l:"Volume YTD",num:1,v:m=>mYtd(m,"v"),f:fC},
     {k:"fy",l:"FBI YTD",num:1,v:m=>mYtd(m,"f"),f:fC}, {k:"fl",l:`FBI ${L}`,num:1,v:m=>m.f[n-1],f:fC},
     {k:"fm",l:"FBI MoM",num:1,v:m=>gr(m.f[n-1],m.f[n-2]),h:(m,v)=>v==null?"–":`<span class="${v>=0?"up":"down"}">${fP(v)}</span>`}],
     rows:x.ms,
-    foot: r => ["Total","","","","","","", fN(sum(r,m=>mYtd(m,"t"))), fC(sum(r,m=>mYtd(m,"v"))), fC(sum(r,m=>mYtd(m,"f"))), fC(sum(r,m=>m.f[n-1])), ""]});
+    foot: r => ["Total","","","","","","","", fN(sum(r,m=>mYtd(m,"t"))), fC(sum(r,m=>mYtd(m,"v"))), fC(sum(r,m=>mYtd(m,"f"))), fC(sum(r,m=>m.f[n-1])), ""]});
 }
 
 /* ================================================================== EDC */
@@ -715,8 +716,10 @@ function atmDetail(x, host="msDetail", pfx="msa_"){
     <div class="panel ms-head"><div class="ms-title"><h2>${esc(x.nm)}</h2><span class="pill">${x.j}</span><span class="pill">${esc(title(x.a))}</span>${host!=="msDetail"?`<button class="btn-sm ms-close" data-close>Tutup</button>`:""}</div>
       <dl class="ms-fields">${[["ID mesin", esc(x.id)], ["Nama lokasi", esc(x.nm)], ["Jenis", x.j], ["Tipe mesin", esc(x.ms||"–")],
         ["Lokasi", esc(title(x.g))], ["Kota", esc(x.kt||"–")], ["Cabang pengelola", esc(x.c+" - "+bn(x.c))], ["Area", esc(title(x.a))],
-        [crm?`Kuadran ${L}`:`Tier ${L}`, esc(x.q)], ["Jenis lokasi", esc(title(x.jl||"–"))], ["Alamat", esc(x.al||"–")],
+        [crm?`Kuadran ${L}`:`Tier ${L}`, qChip(x.q)], ["Jenis lokasi", esc(title(x.jl||"–"))], ["Alamat", esc(x.al||"–")],
         ["Koordinat", x.ll ? `<a href="https://www.google.com/maps?q=${x.ll[0]},${x.ll[1]}" target="_blank" rel="noopener">${x.ll[0].toFixed(5)}, ${x.ll[1].toFixed(5)}</a>` : "–"]].map(f=>fieldHtml(f[0],f[1])).join("")}</dl></div>
+    <div class="panel"><div class="panel-head"><h3>Series kuadran</h3><p>Posisi kuadran mesin ini setiap bulan, Januari–${L} ${A.year}</p></div>
+      <div class="q-series">${(x.qs||[]).map((q,i)=>`<div><span>${BLN[i]}</span>${qChip(q)}</div>`).join("")}</div></div>
     <div class="kpis">${k("Transaksi","t",fN)}${k("Volume","v",fRp)}${k("Fee based income","f",fRp)}${crm ? k("Volume setor tunai","vs",fRp) + k("Transaksi setor tunai","ts",fN) : ""}</div>
     <div class="grid g2">
       ${[["t","Transaksi per bulan"],["v","Volume per bulan"],["f","Fee based income per bulan"]].concat(crm?[["vs","Volume setor tunai per bulan"]]:[]).map(([kk,t]) =>
@@ -725,6 +728,32 @@ function atmDetail(x, host="msDetail", pfx="msa_"){
   for (const kk of ["t","v","f"].concat(crm?["vs"]:[]))
     drawChart($(pfx+kk), {labels:BLN.slice(0,n), fmt:kk==="t"?fN:fC, series:[S_("Nilai", x[kk], C.s1)]});
   const cl = $(host).querySelector("[data-close]"); if (cl) cl.onclick = () => { $(host).innerHTML = ""; if (MAP.sel) { MAP.sel = null; mapMarkers(); } };
+}
+
+/* ---- Kuadran: warna & series ---- */
+const Q_STYLE = {A:["#dff3e6","#0c6a36"], B:["#e1edfb","#1d5fae"], C:["#e3f4f6","#127080"], D:["#fbe4e3","#b42a2a"], E:["#fdeeda","#a2560b"], F:["#eceef1","#5b6672"],
+                 "Tier 1":["#dff3e6","#0c6a36"], "Tier 2":["#e1edfb","#1d5fae"], "Tier 3":["#fdf1d3","#8a5a00"], "Tier 4":["#fbe4e3","#b42a2a"]};
+const Q_NAME = {A:"Best performance", B:"FBI driven", C:"Trx driven", D:"Non performing", E:"Under performing", F:"Kategori khusus",
+                "Tier 1":"Tier 1, terbaik", "Tier 2":"Tier 2", "Tier 3":"Tier 3", "Tier 4":"Tier 4, terendah"};
+function qChip(q){
+  const st = Q_STYLE[q]; if (!st) return `<span class="qchip">${esc(q||"–")}</span>`;
+  return `<span class="qchip" style="background:${st[0]};color:${st[1]}" title="${esc(Q_NAME[q]||q)}">${esc(q.replace("Tier ","T"))}</span>`;
+}
+const qStrip = qs => `<span class="qstrip">${(qs||[]).map((q,i)=>`<i style="background:${(Q_STYLE[q]||["#eceef1"])[0]};color:${(Q_STYLE[q]||[0,"#5b6672"])[1]}" title="${BLN[i]}: ${esc(q)}">${esc(String(q).replace("Tier ","").slice(0,1))}</i>`).join("")}</span>`;
+function renderQSeries(ms, n){
+  const jenis = [...new Set(ms.map(m => m.j))].filter(j => j==="CRM" || j==="ATM").sort((a,b) => a==="CRM" ? -1 : 1);
+  const ORDER = ["A","B","C","D","E","F","Tier 1","Tier 2","Tier 3","Tier 4","-"];
+  $("atmQSeries").innerHTML = jenis.map(j => {
+    const g = ms.filter(m => m.j === j);
+    const cats = ORDER.filter(q => g.some(m => (m.qs||[]).includes(q)));
+    const cnt = (q,i) => g.filter(m => (m.qs||[])[i] === q).length;
+    const head = `<tr><th>${j==="CRM"?"CRM":"ATM tunai"} (${fN(g.length)} mesin)</th>${BLN.slice(0,n).map(b=>`<th class="num">${b}</th>`).join("")}</tr>`;
+    const body = cats.map(q => `<tr><td>${qChip(q)} <span class="qname">${esc(Q_NAME[q] || (q==="-"?"Tanpa kuadran":""))}</span></td>${
+      Array.from({length:n},(_,i)=>{ const c = cnt(q,i), share = g.length ? c/g.length : 0;
+        const al = Math.min(.85, share*1.15);
+        return `<td class="num qcell" style="background:rgba(42,120,214,${al.toFixed(3)})${al>.5?";color:#fff":""}" title="${BLN[i]}: ${fN(c)} mesin (${fP(share)})">${c?fN(c):"·"}</td>`; }).join("")}</tr>`).join("");
+    return `<div class="tbl-wrap full q-tbl"><table><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
+  }).join("") || `<p class="note">Tidak ada mesin untuk filter ini.</p>`;
 }
 
 /* ---- Peta ATM (Leaflet + OpenStreetMap, dimuat saat dibutuhkan) ---- */
@@ -759,6 +788,13 @@ async function renderAtmMap(ms){
   setTimeout(() => MAP.map.invalidateSize(), 0);
   mapMarkers(true);
 }
+const PIN_CACHE = {};
+function pinIcon(color, big){       // ikon lokasi (pin) berwarna sesuai jenis mesin
+  const k = color + big; if (PIN_CACHE[k]) return PIN_CACHE[k];
+  const w = big ? 34 : 24, h = Math.round(w * 1.33);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 24 32"><path d="M12 0.8C5.8 0.8 0.8 5.7 0.8 11.9c0 8.3 9.6 18.3 10.4 19.1a1.1 1.1 0 0 0 1.6 0c.8-.8 10.4-10.8 10.4-19.1C23.2 5.7 18.2.8 12 .8Z" fill="${color}" stroke="${big?"#0e2a47":"#fff"}" stroke-width="${big?2:1.6}"/><circle cx="12" cy="11.8" r="4.3" fill="#fff"/></svg>`;
+  return PIN_CACHE[k] = window.L.divIcon({className:"atm-pin", html:svg, iconSize:[w,h], iconAnchor:[w/2,h-1], tooltipAnchor:[0,0]});
+}
 function mapMarkers(fit){
   const L = window.L; if (!L || !MAP.map) return;
   if (MAP.layer) MAP.layer.remove();
@@ -767,8 +803,8 @@ function mapMarkers(fit){
   for (const m of MAP.ms){
     if (!m.ll) continue;
     const on = MAP.sel === m.id;
-    const mk = L.circleMarker(m.ll, {radius:on?10:6, weight:on?3:1.5, color:on?"#0e2a47":"#ffffff", fillColor:m.j==="CRM"?C.s2:C.s1, fillOpacity:.9});
-    mk.bindTooltip(`<b>${esc(m.nm)}</b><br>${esc(m.id)} · ${m.j}<br>FBI YTD ${fRp(sum(m.f))}`, {direction:"top", offset:[0,-6]});
+    const mk = L.marker(m.ll, {icon:pinIcon(m.j==="CRM"?C.s2:C.s1, on), zIndexOffset:on?1000:0, riseOnHover:true, keyboard:false});
+    mk.bindTooltip(`<b>${esc(m.nm)}</b><br>${esc(m.id)} · ${m.j} · kuadran ${esc(m.q)}<br>FBI YTD ${fRp(sum(m.f))}`, {direction:"top", offset:[0, on?-38:-28]});
     mk.on("click", () => { MAP.sel = m.id; mapMarkers(); atmDetail(m, "atmMapDetail", "mpa_"); $("atmMapDetail").scrollIntoView({behavior:"smooth", block:"start"}); });
     MAP.layer.addLayer(mk);
   }

@@ -302,3 +302,31 @@ tfoot td{font-weight:700;background:#f6f8fa;position:sticky;bottom:0;color:var(-
 .us-who{display:flex;gap:10px;align-items:center}
 .us-act{display:flex;gap:6px}
 @media (max-width:900px){ .side-foot .me{display:none} .badge{margin-left:6px} }
+
+/* pie chart */
+.g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.pie{position:relative;height:250px;margin-top:12px}
+.pie-wrap{display:flex;gap:14px;align-items:center;height:100%}
+.pie-wrap svg{flex:none}
+.pie-c1{font-size:15px;font-weight:800;fill:var(--ink)}
+.pie-c2{font-size:11px;fill:var(--muted)}
+.pie-legend{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:9px;min-width:0;flex:1}
+.pie-legend li{display:grid;grid-template-columns:11px minmax(0,1fr) auto;column-gap:8px;align-items:center;font-size:12.5px;cursor:default;transition:opacity .15s}
+.pie-legend li.dim{opacity:.4}
+.pie-legend i{width:11px;height:11px;border-radius:3px}
+.pie-legend .pl{color:var(--text);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pie-legend b{color:var(--ink)}
+.pie-legend .pv{grid-column:2/4;color:var(--muted);font-size:11.5px}
+@media (max-width:1280px){ .g3{grid-template-columns:1fr} .pie{height:230px} }
+
+/* peta ATM */
+.map-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.map-legend{display:flex;gap:14px;font-size:12.5px;color:var(--text-2)}
+.map-legend span{display:inline-flex;align-items:center;gap:6px}
+.map-legend i{width:11px;height:11px;border-radius:50%;border:1.5px solid #fff;box-shadow:0 0 0 1px #c3cdd8}
+.atm-map{height:460px;margin-top:12px;border-radius:10px;overflow:hidden;border:1px solid var(--line);background:#e9eef3;position:relative;z-index:0}
+.map-fail{display:grid;place-items:center;height:100%;padding:20px;text-align:center;color:var(--text-2);font-size:13px}
+#atmMapDetail{scroll-margin-top:16px}
+.ms-close{margin-left:auto}
+.leaflet-container{font-family:inherit}
+@media (max-width:900px){ .atm-map{height:360px} }

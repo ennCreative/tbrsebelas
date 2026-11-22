@@ -131,4 +131,58 @@ window.drawChart = function(el, cfg){
   el._cfg = cfg; render(el);
   if (!el._ro && window.ResizeObserver){ let w = el.clientWidth; el._ro = new ResizeObserver(() => { if (el.clientWidth !== w){ w = el.clientWidth; render(el); } }); el._ro.observe(el); }
 };
+
+/* ---- Pie / donut: drawPie(el, {items:[{label,value,color,note}], fmt, center:[label,value]}) ---- */
+window.drawPie = function(el, cfg){
+  el._pie = cfg; renderPie(el);
+  if (!el._pro && window.ResizeObserver){ let w = el.clientWidth; el._pro = new ResizeObserver(() => { if (el.clientWidth !== w){ w = el.clientWidth; renderPie(el); } }); el._pro.observe(el); }
+};
+function renderPie(el){
+  const {items, fmt = v => v, center} = el._pie;
+  const W = el.clientWidth, H = el.clientHeight; if (!W || !H) return;
+  el.innerHTML = "";
+  const total = items.reduce((a,b) => a + Math.max(0, +b.value || 0), 0);
+  const wrap = document.createElement("div"); wrap.className = "pie-wrap"; el.appendChild(wrap);
+  const size = Math.max(110, Math.min(H - 8, W * .44, 200)), R = size/2, r0 = R*.62;
+  const svg = mk("svg", {width:size, height:size, viewBox:`0 0 ${size} ${size}`, role:"img"}); wrap.appendChild(svg);
+  const legend = document.createElement("ul"); legend.className = "pie-legend"; wrap.appendChild(legend);
+  let a0 = -Math.PI/2;
+  const arc = (a1, a2) => {
+    const big = a2 - a1 > Math.PI ? 1 : 0, c = R, p = (rr, a) => [c + rr*Math.cos(a), c + rr*Math.sin(a)];
+    const [x1,y1] = p(R,a1), [x2,y2] = p(R,a2), [x3,y3] = p(r0,a2), [x4,y4] = p(r0,a1);
+    return `M${x1},${y1}A${R},${R} 0 ${big} 1 ${x2},${y2}L${x3},${y3}A${r0},${r0} 0 ${big} 0 ${x4},${y4}Z`;
+  };
+  const segs = [];
+  items.forEach((it, i) => {
+    const v = Math.max(0, +it.value || 0), share = total ? v/total : 0;
+    let path = null;
+    if (share > 0){
+      const a1 = a0, a2 = a0 + share * Math.PI * 2 - (share < 1 ? .012 : 0);   // celah tipis antar irisan
+      path = share >= .9999 ? mk("circle",{cx:R, cy:R, r:(R+r0)/2, fill:"none", stroke:it.color, "stroke-width":R-r0})
+                            : mk("path",{d:arc(a1, Math.max(a1+.001, a2)), fill:it.color});
+      svg.appendChild(path); a0 += share * Math.PI * 2;
+    }
+    const li = document.createElement("li");
+    li.innerHTML = `<i style="background:${it.color}"></i><span class="pl">${it.label}</span><b>${(share*100).toLocaleString("id-ID",{maximumFractionDigits:1,minimumFractionDigits:1})}%</b><span class="pv">${fmt(v)}${it.note?` · ${it.note}`:""}</span>`;
+    legend.appendChild(li);
+    segs.push({path, li, it, v, share});
+  });
+  if (center){
+    const t1 = mk("text",{x:R, y:R-4, "text-anchor":"middle", class:"pie-c1"}); t1.textContent = center[1]; svg.appendChild(t1);
+    const t2 = mk("text",{x:R, y:R+14, "text-anchor":"middle", class:"pie-c2"}); t2.textContent = center[0]; svg.appendChild(t2);
+  }
+  const on = (s, e) => {
+    segs.forEach(o => { if (o.path) o.path.style.opacity = o === s ? 1 : .35; o.li.classList.toggle("dim", o !== s); });
+    if (!e) return;
+    const T = tooltip();
+    T.innerHTML = `<b>${s.it.label}</b><div><i style="background:${s.it.color}"></i>Nilai<span>${fmt(s.v)}</span></div><div><i style="background:transparent"></i>Porsi<span>${(s.share*100).toLocaleString("id-ID",{maximumFractionDigits:1})}%</span></div>${s.it.note?`<div><i style="background:transparent"></i>${s.it.note}</div>`:""}`;
+    T.style.display = "block";
+    T.style.left = Math.min(window.innerWidth - T.offsetWidth - 8, e.clientX + 14) + "px"; T.style.top = Math.max(8, e.clientY - T.offsetHeight - 10) + "px";
+  };
+  const off = () => { segs.forEach(o => { if (o.path) o.path.style.opacity = 1; o.li.classList.remove("dim"); }); tooltip().style.display = "none"; };
+  segs.forEach(s => {
+    if (s.path){ s.path.addEventListener("mousemove", e => on(s, e)); s.path.addEventListener("mouseleave", off); }
+    s.li.addEventListener("mouseenter", () => on(s)); s.li.addEventListener("mouseleave", off);
+  });
+}
 })();

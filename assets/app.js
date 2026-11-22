@@ -328,6 +328,8 @@ function renderATM(){
   chart("cAtmQ1", {labels:crmQ.map(q=>"Kuadran "+q), fmt:fN, series:[S_("Jumlah CRM", qc(crmQ,"CRM"), C.s1)]});
   chart("cAtmQ2", {labels:atmQ, fmt:fN, series:[S_("Jumlah ATM", qc(atmQ,"ATM"), C.s1)]});
 
+  if (MAP.sel && !x.ms.some(m => m.id === MAP.sel)) { MAP.sel = null; $("atmMapDetail").innerHTML = ""; }
+  renderAtmMap(x.ms);
   table($("tAtm"), {csv:"mesin_atm", sort:"fy", cols:[
     {k:"id",l:"ID Mesin"}, {k:"nm",l:"Nama Lokasi"}, {k:"j",l:"Jenis", h:(m,v)=>`<span class="pill">${v}</span>`}, {k:"g",l:"Lokasi"},
     {k:"a",l:"Area",f:title}, {k:"cb",l:"Cabang",v:m=>bn(m.c)}, {k:"q",l:`Kuadran ${L}`},
@@ -705,22 +707,73 @@ function lvmDetail(i){
 }
 
 /* ---- ATM / CRM per ID mesin ---- */
-function atmDetail(x){
+function atmDetail(x, host="msDetail", pfx="msa_"){
   const A = D.atm, n = A.last+1, L = BLN[A.last];
   const k = (lbl, key, fmt) => kpi(`${lbl} YTD ${A.year}`, fmt(sum(x[key])), `${L}: ${fmt(x[key][n-1])} ${n>1?grHtml(x[key][n-1], x[key][n-2], "MoM"):""}`);
   const crm = x.j === "CRM";
-  $("msDetail").innerHTML = `
-    <div class="panel ms-head"><div class="ms-title"><h2>${esc(x.nm)}</h2><span class="pill">${x.j}</span><span class="pill">${esc(title(x.a))}</span></div>
+  $(host).innerHTML = `
+    <div class="panel ms-head"><div class="ms-title"><h2>${esc(x.nm)}</h2><span class="pill">${x.j}</span><span class="pill">${esc(title(x.a))}</span>${host!=="msDetail"?`<button class="btn-sm ms-close" data-close>Tutup</button>`:""}</div>
       <dl class="ms-fields">${[["ID mesin", esc(x.id)], ["Nama lokasi", esc(x.nm)], ["Jenis", x.j], ["Tipe mesin", esc(x.ms||"–")],
         ["Lokasi", esc(title(x.g))], ["Kota", esc(x.kt||"–")], ["Cabang pengelola", esc(x.c+" - "+bn(x.c))], ["Area", esc(title(x.a))],
-        [crm?`Kuadran ${L}`:`Tier ${L}`, esc(x.q)]].map(f=>fieldHtml(f[0],f[1])).join("")}</dl></div>
+        [crm?`Kuadran ${L}`:`Tier ${L}`, esc(x.q)], ["Jenis lokasi", esc(title(x.jl||"–"))], ["Alamat", esc(x.al||"–")],
+        ["Koordinat", x.ll ? `<a href="https://www.google.com/maps?q=${x.ll[0]},${x.ll[1]}" target="_blank" rel="noopener">${x.ll[0].toFixed(5)}, ${x.ll[1].toFixed(5)}</a>` : "–"]].map(f=>fieldHtml(f[0],f[1])).join("")}</dl></div>
     <div class="kpis">${k("Transaksi","t",fN)}${k("Volume","v",fRp)}${k("Fee based income","f",fRp)}${crm ? k("Volume setor tunai","vs",fRp) + k("Transaksi setor tunai","ts",fN) : ""}</div>
     <div class="grid g2">
       ${[["t","Transaksi per bulan"],["v","Volume per bulan"],["f","Fee based income per bulan"]].concat(crm?[["vs","Volume setor tunai per bulan"]]:[]).map(([kk,t]) =>
-        `<div class="panel"><div class="panel-head"><h3>${t}</h3><p>Januari–${L} ${A.year}</p></div><div class="chart sm"><div id="msa_${kk}" class="mc"></div></div></div>`).join("")}
+        `<div class="panel"><div class="panel-head"><h3>${t}</h3><p>Januari–${L} ${A.year}</p></div><div class="chart sm"><div id="${pfx}${kk}" class="mc"></div></div></div>`).join("")}
     </div>`;
   for (const kk of ["t","v","f"].concat(crm?["vs"]:[]))
-    drawChart($("msa_"+kk), {labels:BLN.slice(0,n), fmt:kk==="t"?fN:fC, series:[S_("Nilai", x[kk], C.s1)]});
+    drawChart($(pfx+kk), {labels:BLN.slice(0,n), fmt:kk==="t"?fN:fC, series:[S_("Nilai", x[kk], C.s1)]});
+  const cl = $(host).querySelector("[data-close]"); if (cl) cl.onclick = () => { $(host).innerHTML = ""; if (MAP.sel) { MAP.sel = null; mapMarkers(); } };
+}
+
+/* ---- Peta ATM (Leaflet + OpenStreetMap, dimuat saat dibutuhkan) ---- */
+const MAP = {L:null, map:null, layer:null, sel:null, loading:null, ms:[]};
+function loadLeaflet(){
+  if (window.L) return Promise.resolve(window.L);
+  if (MAP.loading) return MAP.loading;
+  MAP.loading = new Promise((ok, no) => {
+    const css = document.createElement("link"); css.rel = "stylesheet"; css.href = "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"; document.head.appendChild(css);
+    const js = document.createElement("script"); js.src = "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js";
+    js.onload = () => ok(window.L); js.onerror = () => { MAP.loading = null; no(new Error("library peta tidak bisa dimuat")); };
+    document.head.appendChild(js);
+    setTimeout(() => { if (!window.L) { MAP.loading = null; no(new Error("waktu habis memuat library peta")); } }, 15000);
+  });
+  return MAP.loading;
+}
+async function renderAtmMap(ms){
+  MAP.ms = ms;
+  const box = $("atmMap"), note = $("atmMapNote");
+  const withLL = ms.filter(m => m.ll);
+  note.textContent = `${fN(withLL.length)} mesin di peta${withLL.length < ms.length ? `, ${fN(ms.length - withLL.length)} tanpa koordinat` : ""}. Klik titik untuk melihat performance lengkap.`;
+  let L;
+  try { L = await loadLeaflet(); }
+  catch(e){ box.innerHTML = `<div class="map-fail">Peta tidak bisa ditampilkan: ${esc(e.message)}. Kemungkinan jaringan memblokir cdn.jsdelivr.net atau tile.openstreetmap.org.</div>`; return; }
+  if (!MAP.map){
+    box.innerHTML = "";
+    MAP.map = L.map(box, {zoomControl:true, scrollWheelZoom:false, preferCanvas:true}).setView([-8.6, 117.5], 7);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {maxZoom:19, attribution:'&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>'}).addTo(MAP.map);
+    MAP.map.on("focus", () => MAP.map.scrollWheelZoom.enable());
+    MAP.map.on("blur", () => MAP.map.scrollWheelZoom.disable());
+  }
+  setTimeout(() => MAP.map.invalidateSize(), 0);
+  mapMarkers(true);
+}
+function mapMarkers(fit){
+  const L = window.L; if (!L || !MAP.map) return;
+  if (MAP.layer) MAP.layer.remove();
+  MAP.layer = L.featureGroup();
+  const n = D.atm.last + 1;
+  for (const m of MAP.ms){
+    if (!m.ll) continue;
+    const on = MAP.sel === m.id;
+    const mk = L.circleMarker(m.ll, {radius:on?10:6, weight:on?3:1.5, color:on?"#0e2a47":"#ffffff", fillColor:m.j==="CRM"?C.s2:C.s1, fillOpacity:.9});
+    mk.bindTooltip(`<b>${esc(m.nm)}</b><br>${esc(m.id)} · ${m.j}<br>FBI YTD ${fRp(sum(m.f))}`, {direction:"top", offset:[0,-6]});
+    mk.on("click", () => { MAP.sel = m.id; mapMarkers(); atmDetail(m, "atmMapDetail", "mpa_"); $("atmMapDetail").scrollIntoView({behavior:"smooth", block:"start"}); });
+    MAP.layer.addLayer(mk);
+  }
+  MAP.layer.addTo(MAP.map);
+  if (fit && MAP.layer.getLayers().length) MAP.map.fitBounds(MAP.layer.getBounds(), {padding:[24,24], maxZoom:13});
 }
 
 /* ================================================================== KELOLA PENGGUNA (admin) */
@@ -832,15 +885,31 @@ function renderSummary(){
       S.map(c => { const [k,big,small] = fn(c); return `<div class="bc ${k}${sel(c)}"><b>${big}</b><span>${small}</span></div>`; }).join("")).join("")}
   </div>`;
 
-  const ar = areas(), SA = ar.map(a => ({a, at:atmSummary(a), ed:edcSummary(a), lv:lvmSummary(a)}));
+  // ---- pie chart
   const tot = at.f + ed.md + lv.fby;
-  $("sumFbiNote").textContent = `Total ${fRp(tot)}: ATM ${fP(tot?at.f/tot:0)}, EDC ${fP(tot?ed.md/tot:0)}, Livin' ${fP(tot?lv.fby/tot:0)}`;
-  chart("cSumFbi", {labels:ar.map(title), fmt:fC, stacked:true, series:[
-      S_("FBI ATM", SA.map(s=>s.at.f), C.s1), S_("MDFG EDC", SA.map(s=>s.ed.md), C.s2), S_("FBI Livin' Merchant", SA.map(s=>s.lv.fby), C.s3)]});
-  chart("cSumTgt", {labels:ar.map(title), fmt:v=>fP(v), series:[
-      S_("Akuisisi YTD", SA.map(s=>s.lv.tgt.akYtd?s.lv.akY/s.lv.tgt.akYtd:0), C.s1),
-      S_("USAK", SA.map(s=>s.lv.tgt.usak?s.lv.usak/s.lv.tgt.usak:0), C.s3),
-      S_("Target 100%", ar.map(()=>1), C.s2, {type:"line", dash:1, flat:1})]});
+  drawPie($("cSumPie1"), {fmt:fRp, center:["total FBI", fRp(tot).replace("Rp ","")], items:[
+    {label:"ATM & CRM", value:at.f, color:C.s1}, {label:"EDC & E-Commerce", value:ed.md, color:C.s2}, {label:"Livin' Merchant", value:lv.fby, color:C.s3}]});
+  const PAL = [C.s1, C.s2, C.s3, C.s4, "#7b61d1", "#d1559b"], OTHER = C.prev;
+  const groups = AREA ? branchSlices() : areas().map((a,i) => ({label:title(a).replace("Area ",""), color:AREA_COLOR[a]||PAL[i%PAL.length], fbi:(x=>x.at.f+x.ed.md+x.lv.fby)({at:atmSummary(a), ed:edcSummary(a), lv:lvmSummary(a)}),
+                                                                 ak:lvmSummary(a).akY, tak:lvmSummary(a).tgt.akYtd}));
+  $("sumPie2T").textContent = AREA ? `Fee based income per cabang, ${title(AREA)}` : "Fee based income per area";
+  $("sumPie3T").textContent = AREA ? `Akuisisi Livin' Merchant per cabang, ${title(AREA)}` : "Akuisisi Livin' Merchant per area";
+  const fbiSum = sum(groups, g=>g.fbi), akSum = sum(groups, g=>g.ak);
+  drawPie($("cSumPie2"), {fmt:fRp, center:[AREA?"total area":"total region", fRp(fbiSum).replace("Rp ","")], items:groups.map(g => ({label:g.label, value:g.fbi, color:g.color}))});
+  drawPie($("cSumPie3"), {fmt:fN, center:["merchant baru", fN(akSum)], items:groups.map(g => ({label:g.label, value:g.ak, color:g.color, note:g.tak?`${fP(g.ak/g.tak)} target`:""}))});
+}
+function branchSlices(){            // 5 cabang terbesar + lainnya, untuk area terpilih
+  const R = {}, g = c => R[c] || (R[c] = {c, fbi:0, ak:0});
+  for (const m of D.atm.machines) if (inArea(m.a)) g(m.c).fbi += sum(m.f);
+  const EI = Object.fromEntries(D.edc.cols.map((c,i)=>[c,i]));
+  for (const r of D.edc.cube) if (inArea(r[0])) g(r[1]).fbi += r[EI.md];
+  for (const r of D.lvm.cube) if (inArea(r[0])) { const o = g(r[1]); o.fbi += r[13]; if (r[3].startsWith("New Akuisisi")) o.ak += r[4]; }
+  const rows = Object.values(R).filter(o => o.c).sort((a,b) => b.fbi - a.fbi);
+  const PAL = [C.s1, C.s2, C.s3, C.s4, "#7b61d1"];
+  const top = rows.slice(0,5).map((o,i) => ({label:bn(o.c), color:PAL[i], fbi:o.fbi, ak:o.ak, tak:tgtFor([o.c]).akYtd}));
+  const rest = rows.slice(5);
+  if (rest.length) top.push({label:`${rest.length} cabang lainnya`, color:C.prev, fbi:sum(rest,o=>o.fbi), ak:sum(rest,o=>o.ak), tak:tgtFor(rest.map(o=>o.c)).akYtd});
+  return top;
 }
 
 /* ================================================================== app */

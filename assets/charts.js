@@ -48,7 +48,7 @@ function render(el){
   const ticks = []; for (let v=0; v<=top+step/1e6; v+=step) ticks.push(v);
   const maxLab = Math.max(...labels.map(l => String(l).length));
   const tickW = Math.max(...ticks.map(t => String(fmt(t)).length)) * 6.6 + 10;
-  const m = SP ? {l:0, r:0, t:2, b:1} : horizontal ? {l:Math.min(170, maxLab*6.6+12), r:16, t:6, b:24} : {l:tickW, r:10, t:8, b: maxLab*6.6 > (W-tickW)/n ? 44 : 24};
+  const m = SP ? {l:0, r:0, t:cfg.values?16:2, b:cfg.cats?17:1} : horizontal ? {l:Math.min(170, maxLab*6.6+12), r:16, t:6, b:24} : {l:tickW, r:10, t:8, b: maxLab*6.6 > (W-tickW)/n ? 44 : 24};
   const pw = W - m.l - m.r, ph = h - m.t - m.b;
   if (pw <= 10 || ph <= 10) return;
   const vs = v => (v/top) * (horizontal ? pw : ph);
@@ -88,10 +88,18 @@ function render(el){
       }
       if (stacked) acc += +v;
       g.appendChild(mk("path",{d, fill:col}));
+      if (SP && cfg.values && !horizontal){        // nilai di atas batang
+        const tv = mk("text",{x:c0 + off + bw/2, y:m.t + ph - vs(+v) - 4, "text-anchor":"middle", class:"mc-sv"});
+        tv.textContent = cfg.values(+v); g.appendChild(tv);
+      }
     });
     // category label
     const lab = String(labels[i]);
-    if (SP) {} else if (horizontal){
+    if (SP) {
+      if (cfg.cats){                               // label bulan/tahun di bawah batang
+        const t = mk("text",{x:m.l + band*i + band/2, y:h - 3, "text-anchor":"middle", class:"mc-sl"}); t.textContent = cfg.cats[i] ?? lab; g.appendChild(t);
+      }
+    } else if (horizontal){
       const t = mk("text",{x:m.l-8, y:c0+groupW/2+4, "text-anchor":"end", class:"mc-l"}); t.textContent = lab.length>26?lab.slice(0,25)+"…":lab; g.appendChild(t);
     } else {
       const cx = m.l + band*i + band/2;

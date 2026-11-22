@@ -25,6 +25,11 @@ function fC(v){ // ringkas
   return fN(v);
 }
 const fRp = v => "Rp " + fC(v);
+function fShort(v){                 // label ringkas di atas batang: 7,1M · 28,9T · 4,5rb
+  const a = Math.abs(v||0), f = (x,u) => x.toLocaleString("id-ID",{maximumFractionDigits:x<10?1:0}) + u;
+  if (a >= 1e12) return f(v/1e12,"T"); if (a >= 1e9) return f(v/1e9,"M"); if (a >= 1e6) return f(v/1e6,"Jt"); if (a >= 1e3) return f(v/1e3,"rb");
+  return fN(v);
+}
 const fP = v => (v==null || !isFinite(v)) ? "–" : (v*100).toLocaleString("id-ID",{maximumFractionDigits:1,minimumFractionDigits:1}) + "%";
 const gr = (c,p) => p ? c/p - 1 : null;
 function grHtml(c,p,label="YoY"){
@@ -298,8 +303,9 @@ const mYtd = (m,k) => sum(m[k]);
 function atmSummary(area){
   const A = D.atm, n = A.last+1;
   const ms = A.machines.filter(m => !area || m.a===area), pv = A.prev.filter(p => !area || p.a===area);
-  return { n: ms.length, f: sum(ms,m=>mYtd(m,"f")), t: sum(ms,m=>mYtd(m,"t")),
-           fp: sum(pv,p=>ytd(p.f,n)), tp: sum(pv,p=>ytd(p.t,n)) };
+  return { n: ms.length, crm: ms.filter(m=>m.j==="CRM").length, f: sum(ms,m=>mYtd(m,"f")), t: sum(ms,m=>mYtd(m,"t")), v: sum(ms,m=>mYtd(m,"v")),
+           vs: sum(ms,m=>mYtd(m,"vs")), ts: sum(ms,m=>mYtd(m,"ts")),
+           fp: sum(pv,p=>ytd(p.f,n)), tp: sum(pv,p=>ytd(p.t,n)), vp: sum(pv,p=>ytd(p.v,n)) };
 }
 function renderATM(){
   const A = D.atm, x = atmData(), n = x.n, L = BLN[A.last];
@@ -353,7 +359,7 @@ function edcSummary(area){
   const E = D.edc, I = Object.fromEntries(E.cols.map((c,i)=>[c,i]));
   const rows = E.cube.filter(r => !area || r[0]===area);
   const t = k => sum(rows, r=>r[I[k]]);
-  return {sv:t("sv"), svp:t("svp"), md:t("md"), mdp:t("mdp"), merch:t("merch"), edc:t("edc")};
+  return {sv:t("sv"), svp:t("svp"), md:t("md"), mdp:t("mdp"), tx:t("tx"), txp:t("txp"), fd:t("fd"), fdp:t("fdp"), merch:t("merch"), edc:t("edc"), nw:t("new")};
 }
 function renderEDC(){
   const E = D.edc, x = edcRows(), I = x.I, t = x.tot, W = `W${E.week}`;
@@ -393,7 +399,7 @@ function lobFilterOpts(){
   const ar = $("lobArea"), cb = $("lobCab");
   const areasOk = D.areas.filter(a => inArea(a));
   const curA = ar.value;
-  ar.innerHTML = (AREA ? "" : `<option value="">Semua area</option>`) + areasOk.map(a=>`<option value="${a}">${title(a)}</option>`).join("");
+  ar.innerHTML = (AREA ? "" : `<option value="">Region XI</option>`) + areasOk.map(a=>`<option value="${a}">${title(a)}</option>`).join("");
   ar.value = AREA || (areasOk.includes(curA) ? curA : "");
   const a = ar.value, curC = cb.value;
   const codes = [...new Set(D.edc.lob.filter(r => inArea(r[0]) && (!a || r[0]===a)).map(r=>r[1]))].filter(Boolean)
@@ -865,11 +871,11 @@ $("usStatus").addEventListener("change", drawUsers);
 $("usReload").addEventListener("click", renderUsers);
 
 /* ================================================================== RINGKASAN */
-function prodPanel({tab, color, name, per, lbl, val, cmp, subs, spark}){
+function prodPanel({tab, color, name, per, lbl, val, cmp, subs, spark, sl}){
   return `<button class="prod" data-go="${tab}" style="--pc:${color}">
     <div class="p-top"><span class="p-name">${name}</span><span class="p-per">${per}</span></div>
     <div class="p-lbl">${lbl}</div><div class="p-val">${val}</div><div class="p-cmp">${cmp}</div>
-    <div class="spark" data-spark="${spark}"></div>
+    <div class="spark-l">${sl||""}</div><div class="spark" data-spark="${spark}"></div>
     <div class="p-sub">${subs.map(s=>`<div><b>${s[1]}</b><span>${s[0]}</span></div>`).join("")}</div>
     <div class="p-go">Lihat detail ${name}</div></button>`;
 }
@@ -879,46 +885,67 @@ function renderSummary(){
   const {y,m,d} = lvmDate();
   const lvP = lv.tgt.akYtd ? lv.akY/lv.tgt.akYtd : null;
   $("sumProducts").innerHTML =
-    prodPanel({tab:"atm", color:C.s1, name:"ATM & CRM", per:`Jan–${BLN[A.last]} ${A.year}`, lbl:"Fee based income YTD",
+    prodPanel({tab:"atm", color:C.s1, name:"ATM & CRM", per:`Jan–${BLN[A.last]} ${A.year}`, lbl:"Fee based income YTD", sl:"FBI per bulan",
       val:fRp(at.f), cmp:grHtml(at.f,at.fp,`dibanding ${A.year-1}`), spark:"atm",
       subs:[["Transaksi YTD", fC(at.t)], ["Jumlah mesin", fN(at.n)]]}) +
-    prodPanel({tab:"edc", color:C.s2, name:"EDC Merchant", per:`s.d. minggu ${E.week} ${E.year}`, lbl:"Sales volume YTD",
+    prodPanel({tab:"edc", color:C.s2, name:"EDC & E-Commerce", per:`s.d. minggu ${E.week} ${E.year}`, lbl:"Sales volume YTD", sl:"Sales volume per tahun",
       val:fRp(ed.sv), cmp:grHtml(ed.sv,ed.svp,`dibanding ${E.year-1}`), spark:"edc",
       subs:[["MDFG YTD", fRp(ed.md)], ["Merchant", fN(ed.merch)]]}) +
-    prodPanel({tab:"lvm", color:C.s3, name:"Livin' Merchant", per:`s.d. ${d} ${BLN[m-1]} ${y}`, lbl:"Akuisisi merchant baru YTD",
+    prodPanel({tab:"lvm", color:C.s3, name:"Livin' Merchant", per:`s.d. ${d} ${BLN[m-1]} ${y}`, lbl:"Akuisisi merchant baru YTD", sl:"Akuisisi per bulan",
       val:fN(lv.akY), cmp:`${pctHtml(lvP)} dari target s.d. hari ini (${fN(lv.tgt.akYtd)})`, spark:"lvm",
       subs:[["Merchant USAK", `${fN(lv.usak)} <small class="${pctCls(lv.tgt.usak?lv.usak/lv.tgt.usak:null)}">${fP(lv.tgt.usak?lv.usak/lv.tgt.usak:null)}</small>`], ["Sales volume YTD", fRp(lv.svy)]]});
-  // sparklines
+  // sparklines: nilai di atas batang, bulan/tahun di bawah
   const atmMs = A.machines.filter(x => inArea(x.a));
-  drawChart(document.querySelector('[data-spark=atm]'), {spark:true, labels:BLN.slice(0,n), fmt:fRp,
+  drawChart(document.querySelector('[data-spark=atm]'), {spark:true, labels:BLN.slice(0,n), cats:BLN.slice(0,n), values:fShort, fmt:fRp,
     series:[S_("FBI", Array.from({length:n},(_,i)=>sum(atmMs,x=>x.f[i])), C.s1)]});
   const yrs = Object.keys(E.hist);
-  drawChart(document.querySelector('[data-spark=edc]'), {spark:true, labels:yrs, fmt:fRp,
+  drawChart(document.querySelector('[data-spark=edc]'), {spark:true, labels:yrs, cats:yrs.map(yy => yy.includes("YTD") ? "YTD" : "'"+yy.slice(2)), values:fShort, fmt:fRp,
     series:[S_("Sales volume", yrs.map(yy => sum(areas(), a => E.hist[yy][a]||0)), yrs.map(yy=>yy.includes("YTD")?C.s2:"#f5b49a"))]});
   const acq = L.acq.filter(r => inArea(BAREA[r[0]]));
-  drawChart(document.querySelector('[data-spark=lvm]'), {spark:true, labels:BLN.slice(0,m), fmt:fN,
+  drawChart(document.querySelector('[data-spark=lvm]'), {spark:true, labels:BLN.slice(0,m), cats:BLN.slice(0,m), values:fShort, fmt:fN,
     series:[S_("Akuisisi", Array.from({length:m},(_,i)=>sum(acq.filter(r=>r[1]===y&&r[2]===i+1),r=>r[3])), C.s3)]});
   document.querySelectorAll("[data-go]").forEach(b => b.onclick = () => goTab(b.dataset.go));
 
-  // papan skor
+  // ---- posisi data terakhir
+  const atmEnd = new Date(A.year, A.last+1, 0);
+  $("sumAsOf").innerHTML = `<span class="asof-t">Posisi data terakhir</span>
+    <span class="asof-i"><i class="dot d-atm"></i>ATM &amp; CRM <b>${atmEnd.getDate()} ${BLN[A.last]} ${A.year}</b></span>
+    <span class="asof-i"><i class="dot d-edc"></i>EDC &amp; E-Commerce <b>Minggu ke-${E.week} ${E.year}</b></span>
+    <span class="asof-i"><i class="dot d-lvm"></i>Livin' Merchant <b>${d} ${BLN[m-1]} ${y}</b></span>
+    <span class="asof-i upd">Diperbarui ${esc(D.generated)}</span>`;
+
+  // ---- Financial Highlight: indikator per produk, nilai di atas & persen di bawah
   const cols = [{a:"", t:"Region XI"}, ...D.areas.map(a => ({a, t:title(a).replace("Area ","")}))];
   const S = cols.map(c => ({...c, at:atmSummary(c.a), ed:edcSummary(c.a), lv:lvmSummary(c.a)}));
-  const gCls = g => g==null ? "" : g >= 0 ? "good" : "bad";
-  const tCls = p => p==null ? "" : p >= 1 ? "good" : p >= .8 ? "mid" : "bad";
-  const sg = g => g==null ? "–" : (g>=0?"▲ ":"▼ ") + fP(Math.abs(g));
-  const rows = [
-    ["FBI ATM", `YoY Jan–${BLN[A.last]}`, s => { const g = gr(s.at.f,s.at.fp); return [gCls(g), sg(g), fRp(s.at.f)]; }],
-    ["Transaksi ATM", "YoY", s => { const g = gr(s.at.t,s.at.tp); return [gCls(g), sg(g), fC(s.at.t)]; }],
-    ["Sales volume EDC", `YoY W${E.week}`, s => { const g = gr(s.ed.sv,s.ed.svp); return [gCls(g), sg(g), fRp(s.ed.sv)]; }],
-    ["MDFG EDC", `YoY W${E.week}`, s => { const g = gr(s.ed.md,s.ed.mdp); return [gCls(g), sg(g), fRp(s.ed.md)]; }],
-    ["Akuisisi Livin'", "vs target YTD", s => { const p = s.lv.tgt.akYtd ? s.lv.akY/s.lv.tgt.akYtd : null; return [tCls(p), fP(p), `${fN(s.lv.akY)} / ${fN(s.lv.tgt.akYtd)}`]; }],
-    ["USAK Livin'", "vs target", s => { const p = s.lv.tgt.usak ? s.lv.usak/s.lv.tgt.usak : null; return [tCls(p), fP(p), `${fN(s.lv.usak)} / ${fN(s.lv.tgt.usak)}`]; }],
+  const yoy = (c,p) => { const g = gr(c,p); return g==null ? ["", "–"] : [g>=0?"good":"bad", `${g>=0?"▲":"▼"} ${fP(Math.abs(g))} YoY`]; };
+  const tgt = (c,t) => { const p = t ? c/t : null; return p==null ? ["", "–"] : [p>=1?"good":p>=.8?"mid":"bad", `${fP(p)} dari target`]; };
+  const plain = txt => ["", txt];
+  const FH = [
+    {name:"ATM & CRM", color:C.s1, sub:`Year to date Jan–${BLN[A.last]} ${A.year}, dibanding periode yang sama ${A.year-1}`, rows:[
+      ["Transaksi", s => [fC(s.at.t), ...yoy(s.at.t, s.at.tp)]],
+      ["Volume transaksi", s => [fRp(s.at.v), ...yoy(s.at.v, s.at.vp)]],
+      ["Fee based income", s => [fRp(s.at.f), ...yoy(s.at.f, s.at.fp)]],
+      ["Volume setor tunai", s => [fRp(s.at.vs), ...plain(`${fC(s.at.ts)} transaksi setor`)]],
+      ["Jumlah mesin", s => [fN(s.at.n), ...plain(`CRM ${fN(s.at.crm)}, ATM ${fN(s.at.n - s.at.crm)}`)]]]},
+    {name:"EDC & E-Commerce", color:C.s2, sub:`Year to date minggu ke-${E.week} ${E.year}, dibanding minggu yang sama ${E.year-1}`, rows:[
+      ["Sales volume", s => [fRp(s.ed.sv), ...yoy(s.ed.sv, s.ed.svp)]],
+      ["Frekuensi transaksi", s => [fC(s.ed.tx), ...yoy(s.ed.tx, s.ed.txp)]],
+      ["MDFG", s => [fRp(s.ed.md), ...yoy(s.ed.md, s.ed.mdp)]],
+      ["Avg funding", s => [fRp(s.ed.fd), ...yoy(s.ed.fd, s.ed.fdp)]],
+      ["Jumlah merchant", s => [fN(s.ed.merch), ...plain(`${fN(s.ed.edc)} mesin EDC`)]]]},
+    {name:"Livin' Merchant", color:C.s3, sub:`Posisi ${d} ${BLN[m-1]} ${y}; target akuisisi dihitung proporsional sampai tanggal data`, rows:[
+      ["Akuisisi merchant baru YTD", s => [fN(s.lv.akY), ...tgt(s.lv.akY, s.lv.tgt.akYtd)]],
+      ["Merchant USAK", s => [fN(s.lv.usak), ...tgt(s.lv.usak, s.lv.tgt.usak)]],
+      ["Merchant aktif bertransaksi", s => [fN(s.lv.act), ...plain(`${fP(s.lv.n ? s.lv.act/s.lv.n : 0)} dari ${fN(s.lv.n)} terdaftar`)]],
+      ["Sales volume YTD", s => [fRp(s.lv.svy), ...plain(`MTD ${BLN[m-1]}: ${fRp(s.lv.svm)}`)]],
+      ["Fee based income YTD", s => [fRp(s.lv.fby), ...plain(`MTD ${BLN[m-1]}: ${fRp(s.lv.fbm)}`)]]]},
   ];
   const sel = c => (AREA && c.a === AREA ? " sel" : "");
-  $("sumBoard").innerHTML = `<div class="board" style="grid-template-columns:150px repeat(${S.length},minmax(0,1fr))">
+  $("sumBoard").innerHTML = `<div class="board" style="grid-template-columns:190px repeat(${S.length},minmax(0,1fr))">
     <div></div>${S.map(c=>`<div class="bh${c.a?"":" reg"}${sel(c)}">${c.t}</div>`).join("")}
-    ${rows.map(([nm,sub,fn]) => `<div class="bm">${nm}<span>${sub}</span></div>` +
-      S.map(c => { const [k,big,small] = fn(c); return `<div class="bc ${k}${sel(c)}"><b>${big}</b><span>${small}</span></div>`; }).join("")).join("")}
+    ${FH.map(gp => `<div class="bg" style="--gc:${gp.color}"><b>${gp.name}</b><span>${gp.sub}</span></div>` +
+      gp.rows.map(([nm, fn]) => `<div class="bm">${nm}</div>` +
+        S.map(c => { const [val, k, small] = fn(c); return `<div class="bc ${k}${sel(c)}"><b>${val}</b><span>${small}</span></div>`; }).join("")).join("")).join("")}
   </div>`;
 
   // ---- pie chart
@@ -951,11 +978,11 @@ function branchSlices(){            // 5 cabang terbesar + lainnya, untuk area t
 /* ================================================================== app */
 const RENDER = {ringkasan:renderSummary, atm:renderATM, edc:renderEDC, lvm:renderLVM, cabang:renderCabang, merchant:renderMerchant, users:renderUsers};
 let TAB = "ringkasan";
-const TITLES = {ringkasan:"Ringkasan kinerja", atm:"ATM & CRM", edc:"EDC Merchant", lvm:"Livin' Merchant", cabang:"Scorecard cabang", merchant:"Cari merchant", users:"Kelola pengguna"};
+const TITLES = {ringkasan:"Overview", atm:"ATM & CRM", edc:"EDC Merchant", lvm:"Livin' Merchant", cabang:"Scorecard cabang", merchant:"Cari merchant", users:"Kelola pengguna"};
 function subTitle(){
   const {y,m,d} = lvmDate();
   return {
-    ringkasan:`Posisi data ATM ${BLN[D.atm.last]} ${D.atm.year}, EDC minggu ${D.edc.week} ${D.edc.year}, Livin' Merchant ${d} ${BLN[m-1]} ${y}`,
+    ringkasan:`Kinerja Transaction Banking Retail Region XI: ATM & CRM, EDC & E-Commerce, dan Livin' Merchant`,
     atm:`Januari–${BLN[D.atm.last]} ${D.atm.year}, dibanding periode yang sama ${D.atm.year-1}`,
     edc:`Year to date minggu ${D.edc.week} ${D.edc.year}, dibanding minggu yang sama ${D.edc.year-1}`,
     lvm:`Data sampai ${d} ${BLN[m-1]} ${y}`,
@@ -975,7 +1002,7 @@ function goTab(t){
 }
 function renderPills(scope){
   const list = scope ? [scope] : ["", ...D.areas];
-  $("areaPills").innerHTML = list.map(a => `<button data-a="${a}" class="${a===AREA?"on":""}" ${scope?"disabled":""}>${a ? title(a).replace("Area ","") : "Semua area"}</button>`).join("");
+  $("areaPills").innerHTML = list.map(a => `<button data-a="${a}" class="${a===AREA?"on":""}" ${scope?"disabled":""}>${a ? title(a).replace("Area ","") : "Region XI"}</button>`).join("");
   $("areaPills").querySelectorAll("button").forEach(b => b.onclick = () => { if (scope) return; AREA = b.dataset.a; renderPills(scope); renderTab(); });
 }
 function start(){

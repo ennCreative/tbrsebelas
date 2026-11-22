@@ -77,7 +77,7 @@
       <div><b>Transaction Banking Retail</b><span>Region XI</span></div>
     </div>
     <nav id="tabs" class="side-nav">
-      <button data-tab="ringkasan" class="active"><i class="dot d-all"></i>Ringkasan</button>
+      <button data-tab="ringkasan" class="active"><i class="dot d-all"></i>Overview</button>
       <button data-tab="atm"><i class="dot d-atm"></i>ATM &amp; CRM</button>
       <button data-tab="edc" id="navEdc"><i class="dot d-edc"></i>Merchant</button>
       <button data-tab="lvm"><i class="dot d-lvm"></i>Livin' Merchant</button>
@@ -96,7 +96,7 @@
   <div class="main">
     <header class="head">
       <div>
-        <h1 id="pageTitle">Ringkasan</h1>
+        <h1 id="pageTitle">Overview</h1>
         <p id="pageSub"></p>
       </div>
       <div class="area-pills" id="areaPills" role="group" aria-label="Filter area"></div>
@@ -106,13 +106,14 @@
       Data baru sudah tersedia. <button id="reloadBtn">Muat data terbaru</button>
     </div>
 
-    <!-- RINGKASAN -->
+    <!-- OVERVIEW -->
     <section class="tab" id="tab-ringkasan">
-      <div class="products" id="sumProducts"></div>
+      <div class="asof" id="sumAsOf"></div>
       <div class="panel board-panel">
-        <div class="panel-head"><h3>Papan skor area</h3><p>Hijau berarti tumbuh atau target tercapai, kuning 80–99% dari target, merah turun atau di bawah 80% target.</p></div>
+        <div class="panel-head"><h3>Financial Highlight</h3><p>Angka di atas adalah nilai, persen di bawah adalah pertumbuhan atau pencapaian target. Hijau: tumbuh atau target tercapai; kuning: 80–99% target; merah: turun atau di bawah 80% target.</p></div>
         <div id="sumBoard" class="board-wrap"></div>
       </div>
+      <div class="products" id="sumProducts"></div>
       <div class="grid g3">
         <div class="panel"><div class="panel-head"><h3>Fee based income per produk</h3><p>ATM FBI, EDC MDFG, dan Livin' FBI, year to date</p></div><div class="pie"><div id="cSumPie1" class="mc"></div></div></div>
         <div class="panel"><div class="panel-head"><h3 id="sumPie2T">Fee based income per area</h3><p>Total ketiga produk, year to date</p></div><div class="pie"><div id="cSumPie2" class="mc"></div></div></div>

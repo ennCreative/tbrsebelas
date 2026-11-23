@@ -78,12 +78,12 @@
     </div>
     <nav id="tabs" class="side-nav">
       <button data-tab="ringkasan" class="active"><i class="dot d-all"></i>Overview</button>
-      <button data-tab="atm"><i class="dot d-atm"></i>ATM &amp; CRM</button>
+      <button data-tab="wpr" id="navWpr" hidden><i class="dot d-wpr"></i>WPR</button>
       <button data-tab="edc" id="navEdc"><i class="dot d-edc"></i>Merchant</button>
       <button data-tab="lvm"><i class="dot d-lvm"></i>Livin' Merchant</button>
-      <button data-tab="cabang"><i class="dot d-cab"></i>Scorecard cabang</button>
-      <button data-tab="wpr" id="navWpr" hidden><i class="dot d-wpr"></i>WPR</button>
+      <button data-tab="atm"><i class="dot d-atm"></i>ATM &amp; CRM</button>
       <button data-tab="merchant"><i class="dot d-src"></i>Pencarian</button>
+      <button data-tab="cabang"><i class="dot d-cab"></i>Scorecard cabang</button>
       <button data-tab="users" id="navUsers" hidden><i class="dot d-usr"></i>Kelola pengguna <b class="badge" id="pendBadge" hidden></b></button>
     </nav>
     <div class="side-foot">
@@ -175,12 +175,12 @@
       </div>
       <div class="panel rank-panel">
         <div class="panel-head rank-head"><div><h3>Top 20 &amp; Drop 20 merchant per cabang</h3><p id="edcRankInfo"></p></div>
-          <div class="rank-ctl"><label>Cabang <select id="edcRankCab"></select></label>
-            <div class="seg" id="edcRankMetric"><button data-k="sv" class="on">SV</button><button data-k="md">MDFG</button><button data-k="tx">Frek</button></div></div></div>
-        <p class="rank-sub" id="edcRankTitle"></p>
-        <div id="edcRankBody" class="grid g2 rank-grid">
-          <div><h4 class="rank-h up-h">Top 20</h4><div id="tEdcTop20"></div></div>
-          <div><h4 class="rank-h down-h">Drop 20</h4><div id="tEdcDrop20"></div></div>
+          <div class="rank-ctl"><label>Cabang <select id="edcRankCab"></select></label></div></div>
+        <div id="edcRankBody">
+          <h4 class="rank-h up-h">Top 20</h4>
+          <div class="tri"><div class="tri-col"><h5>Sales volume</h5><div id="tTop_sv"></div></div><div class="tri-col"><h5>Frekuensi</h5><div id="tTop_tx"></div></div><div class="tri-col"><h5>MDFG</h5><div id="tTop_md"></div></div></div>
+          <h4 class="rank-h down-h">Drop 20</h4>
+          <div class="tri"><div class="tri-col"><h5>Sales volume</h5><div id="tDrop_sv"></div></div><div class="tri-col"><h5>Frekuensi</h5><div id="tDrop_tx"></div></div><div class="tri-col"><h5>MDFG</h5><div id="tDrop_md"></div></div></div>
         </div>
       </div>
       <div class="panel"><div class="panel-head"><h3>Top merchant EDC berdasarkan sales volume</h3></div><div id="tEdcTop"></div></div>

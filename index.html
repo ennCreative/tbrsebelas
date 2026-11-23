@@ -82,7 +82,8 @@
       <button data-tab="edc" id="navEdc"><i class="dot d-edc"></i>Merchant</button>
       <button data-tab="lvm"><i class="dot d-lvm"></i>Livin' Merchant</button>
       <button data-tab="cabang"><i class="dot d-cab"></i>Scorecard cabang</button>
-      <button data-tab="merchant"><i class="dot d-src"></i>Cari merchant</button>
+      <button data-tab="wpr" id="navWpr" hidden><i class="dot d-wpr"></i>WPR</button>
+      <button data-tab="merchant"><i class="dot d-src"></i>Pencarian</button>
       <button data-tab="users" id="navUsers" hidden><i class="dot d-usr"></i>Kelola pengguna <b class="badge" id="pendBadge" hidden></b></button>
     </nav>
     <div class="side-foot">
@@ -114,6 +115,15 @@
         <div id="sumBoard" class="board-wrap"></div>
       </div>
       <div class="products" id="sumProducts"></div>
+      <div class="panel rank-panel">
+        <div class="panel-head rank-head"><div><h3>Top 10 SV drop EDC &amp; E-Commerce</h3><p id="ovEdcInfo"></p></div>
+          <div class="rank-ctl"><label>Segmen <select id="ovEdcSeg"></select></label></div></div>
+        <div id="tOvEdcDrop"></div>
+      </div>
+      <div class="panel rank-panel">
+        <div class="panel-head"><h3 id="ovAtmT">Top 10 volume drop ATM &amp; CRM</h3><p id="ovAtmInfo"></p></div>
+        <div id="tOvAtmDrop"></div>
+      </div>
       <div class="grid g3">
         <div class="panel"><div class="panel-head"><h3>Fee based income per produk</h3><p>ATM FBI, EDC MDFG, dan Livin' FBI, year to date</p></div><div class="pie"><div id="cSumPie1" class="mc"></div></div></div>
         <div class="panel"><div class="panel-head"><h3 id="sumPie2T">Fee based income per area</h3><p>Total ketiga produk, year to date</p></div><div class="pie"><div id="cSumPie2" class="mc"></div></div></div>
@@ -226,6 +236,30 @@
         <button class="btn-sm" id="usReload">Muat ulang</button>
       </div>
       <div class="panel"><div class="panel-head"><h3>Daftar pengguna</h3><p>Setujui pendaftaran dengan mengubah status menjadi Aktif, pilih akses (seluruh Region atau satu area), lalu klik Simpan.</p></div><div id="usList"></div></div>
+    </section>
+
+    <!-- WPR -->
+    <section class="tab" id="tab-wpr" hidden>
+      <div class="filters">
+        <label>Segmen <select id="wSeg"></select></label>
+        <label>Business env <select id="wEnv"></select></label>
+        <label>Cabang <select id="wCab"></select></label>
+      </div>
+      <p id="wInfo" class="note"></p>
+      <div id="wBody" hidden>
+        <div class="kpis" id="wKpis"></div>
+        <div class="grid g3">
+          <div class="panel"><div class="panel-head"><h3>Sales volume per minggu</h3></div><div class="chart sm"><div id="cW_sv" class="mc"></div></div></div>
+          <div class="panel"><div class="panel-head"><h3>Frekuensi per minggu</h3></div><div class="chart sm"><div id="cW_fq" class="mc"></div></div></div>
+          <div class="panel"><div class="panel-head"><h3>Fee based income per minggu</h3></div><div class="chart sm"><div id="cW_fb" class="mc"></div></div></div>
+        </div>
+        <div class="panel"><div class="panel-head"><h3>Per segmen</h3><p>Sales volume 4 minggu terakhir dan year to date</p></div><div id="tWSeg"></div></div>
+        <div class="panel rank-panel"><div class="panel-head"><h3 id="wMoveT">Naik &amp; turun terbesar</h3><p>Perubahan sales volume minggu terakhir dibanding minggu sebelumnya, per merchant (nama sama sudah digabung)</p></div>
+          <div class="grid g2 rank-grid"><div><h4 class="rank-h up-h">10 naik terbesar</h4><div id="tWUp"></div></div><div><h4 class="rank-h down-h">10 turun terbesar</h4><div id="tWDown"></div></div></div></div>
+        <div class="panel"><div class="panel-head"><h3>Per cabang</h3></div><div id="tWCab"></div></div>
+        <div id="wDetail"></div>
+        <div class="panel"><div class="panel-head"><h3>Daftar merchant</h3><p>Satu baris per nama merchant; MID berbeda dengan nama yang sama sudah digabung. Klik baris untuk detail.</p></div><div id="tWMer"></div></div>
+      </div>
     </section>
 
     <!-- CABANG -->

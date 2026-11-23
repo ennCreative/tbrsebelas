@@ -245,7 +245,7 @@ const chart = (id, cfg) => drawChart($(id), cfg);
 const S_ = (label, data, color, extra={}) => Object.assign({label, data, color}, extra);
 
 /* ------------------------------------------------------------------ table */
-function table(el, {cols, rows, page=25, search=true, sort, dir=-1, foot, csv, freeze=0, full=false}){
+function table(el, {cols, rows, page=25, search=true, sort, dir=-1, foot, csv, freeze=0, full=false, rowKey=null, onRow=null}){
   const st = el._st || (el._st = {q:"", sort, dir, p:0});
   st.cols = cols; st.rows = rows;
   const draw = () => {
@@ -260,7 +260,7 @@ function table(el, {cols, rows, page=25, search=true, sort, dir=-1, foot, csv, f
       <div class="tbl-tools">${search?`<input type="search" placeholder="Cari…" value="${esc(st.q)}">`:"<span></span>"}
         <span><span class="note">${fN(r.length)} baris</span> ${csv?`<button class="btn" data-csv>Unduh CSV</button>`:""}</span></div>
       <div class="tbl-wrap${full?" full":""}${freeze?" frz":""}"><table><thead><tr>${cols.map(c=>`<th class="${c.num?"num":""}" data-k="${c.k}">${c.l}${st.sort===c.k?`<span class="arr">${st.dir>0?"▲":"▼"}</span>`:""}</th>`).join("")}</tr></thead>
-      <tbody>${vis.map((x,i)=>`<tr>${cols.map(c=>cell(c,x,st.p*page+i)).join("")}</tr>`).join("") || `<tr><td colspan="${cols.length}" class="note">Tidak ada data</td></tr>`}</tbody>
+      <tbody>${vis.map((x,i)=>`<tr${rowKey?` data-key="${esc(rowKey(x))}" class="clk" title="Klik untuk melihat performance lengkap"`:""}>${cols.map(c=>cell(c,x,st.p*page+i)).join("")}</tr>`).join("") || `<tr><td colspan="${cols.length}" class="note">Tidak ada data</td></tr>`}</tbody>
       ${foot?`<tfoot><tr>${foot(r).map((v,i)=>`<td class="${cols[i]&&cols[i].num?"num":""}">${v??""}</td>`).join("")}</tr></tfoot>`:""}</table></div>
       ${pages>1?`<div class="pager"><button data-p="-1">‹</button> Hal ${st.p+1} / ${pages} <button data-p="1">›</button></div>`:""}`;
     if (freeze) {   // kolom beku: hitung posisi kiri tiap kolom beku
@@ -271,6 +271,7 @@ function table(el, {cols, rows, page=25, search=true, sort, dir=-1, foot, csv, f
         left += w;
       }
     }
+    if (onRow) el.querySelectorAll("tr[data-key]").forEach(tr => tr.onclick = () => onRow(tr.dataset.key));
     const inp = el.querySelector("input[type=search]");
     if (inp) inp.oninput = e => { st.q = e.target.value; st.p = 0; draw(); const n = el.querySelector("input[type=search]"); n.focus(); n.setSelectionRange(n.value.length,n.value.length); };
     el.querySelectorAll("th").forEach(th => th.onclick = () => { const k = th.dataset.k; st.dir = st.sort===k ? -st.dir : -1; st.sort = k; draw(); });
@@ -394,6 +395,7 @@ function renderEDC(){
     {k:"md",l:"MDFG",num:1,f:fC}, {k:"tx",l:"Trx",num:1,f:fN}, {k:"fd",l:"Avg Fund",num:1,f:fC},
     {k:"s",l:"Segmen"}, {k:"l",l:"LOB"}]});
   renderEdcLob();
+  renderEdcRank();
 }
 function lobFilterOpts(){
   const ar = $("lobArea"), cb = $("lobCab");
@@ -419,6 +421,73 @@ function renderEdcLob(){
     {k:"g",l:"Growth",num:1,v:o=>gr(o.sv,o.svp),h:(o,v)=>v==null?"–":`<span class="${v>=0?"up":"down"}">${fP(v)}</span>`},
     {k:"sh",l:"Share",num:1,v:o=>totSv?o.sv/totSv:0,f:fP}, {k:"md",l:"MDFG",num:1,f:fC}],
     foot: r => ["Total", fN(sum(r,o=>o.m)), fC(sum(r,o=>o.svp)), fC(sum(r,o=>o.sv)), (g=>g==null?"–":`<span class="${g>=0?"up":"down"}">${fP(g)}</span>`)(gr(sum(r,o=>o.sv),sum(r,o=>o.svp))), "", fC(sum(r,o=>o.md))]});
+}
+
+
+/* ================================================================== RANKING MERCHANT PER CABANG */
+const RANK = {edc:"sv"};
+const RANK_M = {sv:["Sales volume", fC, "SV"], md:["MDFG", fC, "MDFG"], tx:["Frekuensi transaksi", fN, "Frek"]};
+function cabOptions(sel, codes){
+  const cur = sel.value;
+  const list = [...new Set(codes)].filter(Boolean).sort((x,y) => bn(x).localeCompare(bn(y)));
+  sel.innerHTML = `<option value="">Semua cabang${AREA?` ${title(AREA)}`:" Region XI"}</option>` + list.map(c => `<option value="${c}">${esc(c+" - "+bn(c))}</option>`).join("");
+  sel.value = list.includes(cur) ? cur : "";
+  return sel.value;
+}
+function openInSearch(mode, field, q){        // klik baris ranking -> buka performance lengkap di Cari merchant
+  MS.mode = mode; MS.sel = null; MS.page = 0;
+  goTab("merchant");
+  setTimeout(() => { $("msField").value = field; $("msQ").value = q; renderMerchant(); }, 0);
+}
+const growthTag = v => v==null ? "–" : `<span class="${v>=0?"up":"down"}">${v>=0?"▲":"▼"} ${fP(Math.abs(v))}</span>`;
+async function renderEdcRank(){
+  const host = $("edcRankBody");
+  if (!BOX.merchant){
+    host.hidden = true; $("edcRankInfo").textContent = "Menyiapkan data merchant…";
+    try { await loadBox("merchant"); } catch(e){ $("edcRankInfo").textContent = "Gagal memuat data merchant: " + e.message; return; }
+    if (TAB !== "edc") return;
+  }
+  const m = BOX.merchant, L = m.labels.length, iY = L-3, iP = L-4, y = m.year, w = m.week;
+  const idxArea = []; for (let i=0;i<m.n;i++) if (inArea(m.a[i])) idxArea.push(i);
+  const cab = cabOptions($("edcRankCab"), idxArea.map(i => m.c[i]));
+  const k = RANK.edc, [mName, fmt, short] = RANK_M[k];
+  document.querySelectorAll("#edcRankMetric button").forEach(b => b.classList.toggle("on", b.dataset.k === k));
+  const idx = cab ? idxArea.filter(i => m.c[i] === cab) : idxArea;
+  const cur = i => mv(m,k,iY,i)||0, prev = i => mv(m,k,iP,i)||0;
+  const top = idx.filter(i => cur(i) > 0).sort((a,b) => cur(b) - cur(a)).slice(0,20);
+  const drop = idx.filter(i => prev(i) > 0 && cur(i) < prev(i)).sort((a,b) => (cur(a)-prev(a)) - (cur(b)-prev(b))).slice(0,20);
+  const rowOf = i => ({i, nm:m.nm[i]||"–", mid:m.mid[i]||"", cb:m.c[i]+" - "+bn(m.c[i]), cur:cur(i), prev:prev(i), d:cur(i)-prev(i), g:gr(cur(i),prev(i))});
+  const base = [{k:"rk",l:"#",num:1,v:x=>x.rk}, {k:"nm",l:"Merchant"}, {k:"mid",l:"MID"}].concat(cab ? [] : [{k:"cb",l:"Cabang"}]);
+  $("edcRankTitle").textContent = `${mName}, year to date minggu ke-${w}`;
+  const mk = (el, rows, cols, csv) => { el._st = null; table(el, {rows:rows.map((x,n)=>({...x, rk:n+1})), cols, page:20, search:false, full:true, csv,
+    rowKey:x=>x.mid, onRow:mid => openInSearch("edc","mid",mid)}); };
+  mk($("tEdcTop20"), top.map(rowOf), base.concat([
+    {k:"cur",l:`${short} ${y}`,num:1,f:fmt}, {k:"prev",l:`${short} ${y-1}`,num:1,f:fmt}, {k:"g",l:"Growth",num:1,h:(x,v)=>growthTag(v)}]), `top20_${k}_${cab||"semua"}`);
+  mk($("tEdcDrop20"), drop.map(rowOf), base.concat([
+    {k:"prev",l:`${short} ${y-1}`,num:1,f:fmt}, {k:"cur",l:`${short} ${y}`,num:1,f:fmt},
+    {k:"d",l:"Penurunan",num:1,h:(x,v)=>`<span class="down">${fmt(v)}</span>`}, {k:"g",l:"%",num:1,h:(x,v)=>growthTag(v)}]), `drop20_${k}_${cab||"semua"}`);
+  host.hidden = false; $("edcRankInfo").textContent = `${fN(idx.length)} MID${cab?` di ${bn(cab)}`:""}. Drop 20 = penurunan terbesar dibanding YTD minggu ke-${w} ${y-1}. Klik baris untuk melihat performance lengkap.`;
+}
+async function renderLvmUsak(){
+  const host = $("lvmUsakInfo");
+  if (!BOX.lvm){
+    host.textContent = "Menyiapkan data Livin' Merchant (sekitar 12 MB)…";
+    try { await loadBox("lvm"); } catch(e){ host.textContent = "Gagal memuat data: " + e.message; return; }
+    if (TAB !== "lvm") return;
+  }
+  const m = BOX.lvm, kelas = $("lvmKelas").value;
+  const idxArea = []; for (let i=0;i<m.n;i++) if (m.u[i] && inArea(cv(m.a,i)) && (!kelas || (KELAS[m.c[i]]||"Lainnya")===kelas)) idxArea.push(i);
+  const cab = cabOptions($("lvmUsakCab"), idxArea.map(i => m.c[i]));
+  const idx = cab ? idxArea.filter(i => m.c[i] === cab) : idxArea;
+  const rowOf = i => ({i, nm:m.nm[i]||"–", mid:m.mid[i]||"", cb:m.c[i]+" - "+bn(m.c[i]), g:cv(m.g,i), sv:m.svy[i], fq:m.fqy[i], fb:m.fby[i]});
+  const cols = [{k:"rk",l:"#",num:1}, {k:"nm",l:"Merchant"}, {k:"mid",l:"MID"}].concat(cab ? [] : [{k:"cb",l:"Cabang"}]).concat([
+    {k:"g",l:"Grading"}, {k:"sv",l:"SV YTD",num:1,f:fC}, {k:"fq",l:"Frek YTD",num:1,f:fN}, {k:"fb",l:"FBI YTD",num:1,f:fC}]);
+  const mk = (el, key, csv) => { el._st = null;
+    const rows = [...idx].sort((a,b) => (key==="sv" ? m.svy[b]-m.svy[a] : m.fqy[b]-m.fqy[a])).slice(0,20).map((i,n) => ({...rowOf(i), rk:n+1}));
+    table(el, {rows, cols, page:20, search:false, full:true, csv, rowKey:x=>x.mid, onRow:mid => openInSearch("lvm","mid",mid)}); };
+  mk($("tLvmUsakSv"), "sv", `top_usak_sv_${cab||"semua"}`);
+  mk($("tLvmUsakFq"), "fq", `top_usak_frek_${cab||"semua"}`);
+  host.textContent = `${fN(idx.length)} merchant USAK${cab?` di ${bn(cab)}`:""}, posisi ${m.asof.split("-").reverse().join("-")}. Klik baris untuk melihat performance lengkap.`;
 }
 
 /* ================================================================== LVM */
@@ -478,6 +547,7 @@ function renderLVM(){
 
   const lobs = {};
   for (const r of L.lob) if (inArea(r[0])) { const o = lobs[r[1]] || (lobs[r[1]] = {l:r[1], n:0, act:0, usak:0, sv:0}); o.n+=r[2]; o.act+=r[3]; o.usak+=r[4]; o.sv+=r[5]; }
+  renderLvmUsak();
   table($("tLvmLob"), {csv:"lob_lvm", sort:"sv", page:12, rows:Object.values(lobs), cols:[
     {k:"l",l:"Kategori"}, {k:"n",l:"Merchant",num:1,f:fN}, {k:"act",l:"Aktif",num:1,f:fN}, {k:"usak",l:"USAK",num:1,f:fN}, {k:"sv",l:"SV YTD",num:1,f:fC}]});
 
@@ -1031,6 +1101,9 @@ function start(){
 $("tabs").addEventListener("click", e => { const b = e.target.closest("button[data-tab]"); if (b) goTab(b.dataset.tab); });
 ["atmJenis","atmGroup","atmMetric","edcSeg","edcLob","edcTipe","lvmKelas"].forEach(id => $(id).addEventListener("change", renderTab));
 $("lobArea").addEventListener("change", () => { $("lobCab").value = ""; renderEdcLob(); });
+$("edcRankCab").addEventListener("change", renderEdcRank);
+$("edcRankMetric").addEventListener("click", e => { const b = e.target.closest("button[data-k]"); if (!b) return; RANK.edc = b.dataset.k; renderEdcRank(); });
+$("lvmUsakCab").addEventListener("change", renderLvmUsak);
 $("lobCab").addEventListener("change", renderEdcLob);
 let msT; $("msQ").addEventListener("input", () => { clearTimeout(msT); msT = setTimeout(() => { MS.sel = null; MS.page = 0; msSearch(); }, 200); });
 $("msField").addEventListener("change", () => { MS.sel = null; MS.page = 0; msSearch(); $("msQ").focus(); });

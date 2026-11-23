@@ -367,3 +367,20 @@ tfoot td{font-weight:700;background:#f6f8fa;position:sticky;bottom:0;color:var(-
 .spark-l{font-size:11.5px;color:var(--muted);margin-top:12px}
 .mc-sv{font-size:9.5px;fill:var(--text-2);font-weight:600}
 .mc-sl{font-size:10px;fill:var(--muted)}
+
+/* ranking per cabang */
+.rank-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap}
+.rank-ctl{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.rank-ctl label{font-size:13px;color:var(--text-2);font-weight:600;display:flex;gap:8px;align-items:center}
+.rank-ctl select{padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--paper);max-width:300px}
+.seg{display:flex;background:#f1f4f7;border-radius:9px;padding:3px;gap:2px}
+.seg button{border:0;background:none;border-radius:7px;padding:6px 14px;font-weight:700;font-size:13px;color:var(--text-2)}
+.seg button.on{background:var(--ink);color:#fff}
+.rank-sub{margin:10px 0 0;font-size:13px;font-weight:700;color:var(--ink)}
+.rank-grid{margin:4px 0 0;grid-template-columns:1fr!important}
+.rank-h{margin:12px 0 0;font-size:13.5px;color:var(--ink);display:flex;align-items:center;gap:6px}
+.up-h::before{content:"▲";color:var(--good);font-size:11px}
+.down-h::before{content:"▼";color:var(--bad);font-size:11px}
+.rank-grid .tbl-tools{margin-top:6px}
+tr.clk{cursor:pointer}
+tr.clk:hover td{background:#eef4fc!important}

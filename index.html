@@ -163,6 +163,16 @@
         <div class="panel"><div class="panel-head"><h3>Sales volume YTD per segmen</h3></div><div class="chart"><div id="cEdcSeg" class="mc"></div></div></div>
         <div class="panel"><div class="panel-head"><h3>Kuadran merchant (SV &amp; funding)</h3><p>Jumlah merchant. Mengikuti filter area.</p></div><div class="chart"><div id="cEdcKuad" class="mc"></div></div></div>
       </div>
+      <div class="panel rank-panel">
+        <div class="panel-head rank-head"><div><h3>Top 20 &amp; Drop 20 merchant per cabang</h3><p id="edcRankInfo"></p></div>
+          <div class="rank-ctl"><label>Cabang <select id="edcRankCab"></select></label>
+            <div class="seg" id="edcRankMetric"><button data-k="sv" class="on">SV</button><button data-k="md">MDFG</button><button data-k="tx">Frek</button></div></div></div>
+        <p class="rank-sub" id="edcRankTitle"></p>
+        <div id="edcRankBody" class="grid g2 rank-grid">
+          <div><h4 class="rank-h up-h">Top 20</h4><div id="tEdcTop20"></div></div>
+          <div><h4 class="rank-h down-h">Drop 20</h4><div id="tEdcDrop20"></div></div>
+        </div>
+      </div>
       <div class="panel"><div class="panel-head"><h3>Top merchant EDC berdasarkan sales volume</h3></div><div id="tEdcTop"></div></div>
       <div class="panel"><div class="panel-head"><h3>Kinerja per LOB</h3></div>
         <div class="filters in-panel"><label>Area <select id="lobArea"></select></label><label>Cabang <select id="lobCab"></select></label></div>
@@ -180,6 +190,14 @@
         <div class="panel"><div class="panel-head"><h3>Grading transaksi merchant</h3></div><div class="chart"><div id="cLvmGrade" class="mc"></div></div></div>
       </div>
       <div class="panel"><div class="panel-head"><h3>Ranking pencapaian cabang</h3></div><div id="tLvmRank"></div></div>
+      <div class="panel rank-panel">
+        <div class="panel-head rank-head"><div><h3>Top merchant USAK per cabang</h3><p id="lvmUsakInfo"></p></div>
+          <div class="rank-ctl"><label>Cabang <select id="lvmUsakCab"></select></label></div></div>
+        <div class="grid g2 rank-grid">
+          <div><h4 class="rank-h">Top 20 USAK berdasarkan sales volume</h4><div id="tLvmUsakSv"></div></div>
+          <div><h4 class="rank-h">Top 20 USAK berdasarkan frekuensi</h4><div id="tLvmUsakFq"></div></div>
+        </div>
+      </div>
       <div class="grid g2">
         <div class="panel"><div class="panel-head"><h3>Kategori usaha</h3></div><div id="tLvmLob"></div></div>
         <div class="panel"><div class="panel-head"><h3>Top merchant berdasarkan sales volume YTD</h3></div><div id="tLvmTop"></div></div>

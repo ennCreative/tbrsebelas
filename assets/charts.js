@@ -19,6 +19,11 @@ function roundBar(x, y, w, h, r, horiz){
   if (horiz) return `M${x},${y}H${x+w-r}Q${x+w},${y} ${x+w},${y+r}V${y+h-r}Q${x+w},${y+h} ${x+w-r},${y+h}H${x}Z`;
   return `M${x},${y+h}V${y+r}Q${x},${y} ${x+r},${y}H${x+w-r}Q${x+w},${y} ${x+w},${y+r}V${y+h}Z`;
 }
+function cshort(v){                  // label ringkas: 7,1M · 28,9T · 4,5rb · 143
+  const a = Math.abs(v||0), f = (x,u) => x.toLocaleString("id-ID",{maximumFractionDigits:x<10?1:0}) + u;
+  if (a >= 1e12) return f(v/1e12,"T"); if (a >= 1e9) return f(v/1e9,"M"); if (a >= 1e6) return f(v/1e6,"Jt"); if (a >= 1e4) return f(v/1e3,"rb");
+  return (v||0).toLocaleString("id-ID",{maximumFractionDigits:1});
+}
 let tip;
 function tooltip(){
   if (!tip){ tip = document.createElement("div"); tip.className = "mc-tip"; document.body.appendChild(tip); }
@@ -48,7 +53,10 @@ function render(el){
   const ticks = []; for (let v=0; v<=top+step/1e6; v+=step) ticks.push(v);
   const maxLab = Math.max(...labels.map(l => String(l).length));
   const tickW = Math.max(...ticks.map(t => String(fmt(t)).length)) * 6.6 + 10;
-  const m = SP ? {l:0, r:0, t:cfg.values?16:2, b:cfg.cats?17:1} : horizontal ? {l:Math.min(170, maxLab*6.6+12), r:16, t:6, b:24} : {l:tickW, r:10, t:8, b: maxLab*6.6 > (W-tickW)/n ? 44 : 24};
+  const SHOWV = cfg.values !== false && !stacked;                     // angka di atas setiap batang
+  const dense = !horizontal && bars.length > 1 && ((W - tickW) / n) * 0.72 / bars.length < 22;
+  const m = SP ? {l:0, r:0, t:cfg.values?16:2, b:cfg.cats?17:1} : horizontal ? {l:Math.min(170, maxLab*6.6+12), r:SHOWV?62:16, t:6, b:24} : {l:tickW, r:10, t:SHOWV?(dense?36:22):8, b: maxLab*6.6 > (W-tickW)/n ? 44 : 24};
+  const vfmt = typeof cfg.values === "function" ? cfg.values : cshort;
   const pw = W - m.l - m.r, ph = h - m.t - m.b;
   if (pw <= 10 || ph <= 10) return;
   const vs = v => (v/top) * (horizontal ? pw : ph);
@@ -88,9 +96,13 @@ function render(el){
       }
       if (stacked) acc += +v;
       g.appendChild(mk("path",{d, fill:col}));
-      if (SP && cfg.values && !horizontal){        // nilai di atas batang
-        const tv = mk("text",{x:c0 + off + bw/2, y:m.t + ph - vs(+v) - 4, "text-anchor":"middle", class:"mc-sv"});
-        tv.textContent = cfg.values(+v); g.appendChild(tv);
+      if (SHOWV && (cfg.values || !SP)){            // nilai di atas batang (atau di ujung batang horizontal)
+        const tv = horizontal
+          ? mk("text",{x:m.l + vs(+v) + 4, y:c0 + off + bw/2 + 3.5, "text-anchor":"start", class:"mc-sv"})
+          : bw < 22 && k > 1
+            ? mk("text",{x:c0 + off + bw/2 + 3, y:m.t + ph - vs(+v) - 4, "text-anchor":"start", class:"mc-sv tight", transform:`rotate(-90 ${c0 + off + bw/2 + 3} ${m.t + ph - vs(+v) - 4})`})
+            : mk("text",{x:c0 + off + bw/2, y:m.t + ph - vs(+v) - 4, "text-anchor":"middle", class:"mc-sv" + (bw < 16 ? " tight" : "")});
+        tv.textContent = vfmt(+v); g.appendChild(tv);
       }
     });
     // category label

@@ -245,7 +245,7 @@ const chart = (id, cfg) => drawChart($(id), cfg);
 const S_ = (label, data, color, extra={}) => Object.assign({label, data, color}, extra);
 
 /* ------------------------------------------------------------------ table */
-function table(el, {cols, rows, page=25, search=true, sort, dir=-1, foot, csv, freeze=0, full=false, rowKey=null, onRow=null}){
+function table(el, {cols, rows, page=25, search=true, sort, dir=-1, foot, csv, freeze=0, full=false, rowKey=null, onRow=null, needQuery=null}){
   const st = el._st || (el._st = {q:"", sort, dir, p:0});
   st.cols = cols; st.rows = rows;
   const draw = () => {
@@ -255,7 +255,14 @@ function table(el, {cols, rows, page=25, search=true, sort, dir=-1, foot, csv, f
       r = [...r].sort((a,b)=>{ const A=g(a), B=g(b); return (typeof A==="number"||typeof B==="number") ? ((A??-Infinity)-(B??-Infinity))*st.dir : String(A).localeCompare(String(B))*st.dir; }); }
     const pages = Math.max(1, Math.ceil(r.length/page)); st.p = Math.min(st.p, pages-1);
     const vis = r.slice(st.p*page, st.p*page+page);
-    const cell = (c,x,i) => { const v = c.v ? c.v(x) : x[c.k]; return `<td class="${c.num?"num":""}">${c.h ? c.h(x,v,i) : c.f ? c.f(v) : esc(v)}</td>`; };
+    const cell = (c,x,i) => { const v = c.v ? c.v(x) : x[c.k];
+      if (c.num || c.h || c.f) return `<td class="${c.num?"num":""}">${c.h ? c.h(x,v,i) : c.f ? c.f(v) : esc(v)}</td>`;
+      const t = String(v ?? ""); return `<td class="txt"${t.length > 34 ? ` title="${esc(t)}"` : ""}>${esc(t)}</td>`; };
+    if (needQuery && !st.q){
+      el.innerHTML = `<div class="tbl-tools"><input type="search" placeholder="Cari…" value=""><span></span></div><div class="empty-q">${needQuery}</div>`;
+      const i0 = el.querySelector("input[type=search]"); i0.oninput = e => { st.q = e.target.value; st.p = 0; draw(); const n = el.querySelector("input[type=search]"); n.focus(); n.setSelectionRange(n.value.length,n.value.length); };
+      return;
+    }
     el.innerHTML = `
       <div class="tbl-tools">${search?`<input type="search" placeholder="Cari…" value="${esc(st.q)}">`:"<span></span>"}
         <span><span class="note">${fN(r.length)} baris</span> ${csv?`<button class="btn" data-csv>Unduh CSV</button>`:""}</span></div>
@@ -450,23 +457,19 @@ async function renderEdcRank(){
   const m = BOX.merchant, L = m.labels.length, iY = L-3, iP = L-4, y = m.year, w = m.week;
   const idxArea = []; for (let i=0;i<m.n;i++) if (inArea(m.a[i])) idxArea.push(i);
   const cab = cabOptions($("edcRankCab"), idxArea.map(i => m.c[i]));
-  const k = RANK.edc, [mName, fmt, short] = RANK_M[k];
-  document.querySelectorAll("#edcRankMetric button").forEach(b => b.classList.toggle("on", b.dataset.k === k));
   const idx = cab ? idxArea.filter(i => m.c[i] === cab) : idxArea;
-  const cur = i => mv(m,k,iY,i)||0, prev = i => mv(m,k,iP,i)||0;
-  const top = idx.filter(i => cur(i) > 0).sort((a,b) => cur(b) - cur(a)).slice(0,20);
-  const drop = idx.filter(i => prev(i) > 0 && cur(i) < prev(i)).sort((a,b) => (cur(a)-prev(a)) - (cur(b)-prev(b))).slice(0,20);
-  const rowOf = i => ({i, nm:m.nm[i]||"–", mid:m.mid[i]||"", cb:m.c[i]+" - "+bn(m.c[i]), cur:cur(i), prev:prev(i), d:cur(i)-prev(i), g:gr(cur(i),prev(i))});
-  const base = [{k:"rk",l:"#",num:1,v:x=>x.rk}, {k:"nm",l:"Merchant"}, {k:"mid",l:"MID"}].concat(cab ? [] : [{k:"cb",l:"Cabang"}]);
-  $("edcRankTitle").textContent = `${mName}, year to date minggu ke-${w}`;
-  const mk = (el, rows, cols, csv) => { el._st = null; table(el, {rows:rows.map((x,n)=>({...x, rk:n+1})), cols, page:20, search:false, full:true, csv,
-    rowKey:x=>x.mid, onRow:mid => openInSearch("edc","mid",mid)}); };
-  mk($("tEdcTop20"), top.map(rowOf), base.concat([
-    {k:"cur",l:`${short} ${y}`,num:1,f:fmt}, {k:"prev",l:`${short} ${y-1}`,num:1,f:fmt}, {k:"g",l:"Growth",num:1,h:(x,v)=>growthTag(v)}]), `top20_${k}_${cab||"semua"}`);
-  mk($("tEdcDrop20"), drop.map(rowOf), base.concat([
-    {k:"prev",l:`${short} ${y-1}`,num:1,f:fmt}, {k:"cur",l:`${short} ${y}`,num:1,f:fmt},
-    {k:"d",l:"Penurunan",num:1,h:(x,v)=>`<span class="down">${fmt(v)}</span>`}, {k:"g",l:"%",num:1,h:(x,v)=>growthTag(v)}]), `drop20_${k}_${cab||"semua"}`);
-  host.hidden = false; $("edcRankInfo").textContent = `${fN(idx.length)} MID${cab?` di ${bn(cab)}`:""}. Drop 20 = penurunan terbesar dibanding YTD minggu ke-${w} ${y-1}. Klik baris untuk melihat performance lengkap.`;
+  const nmCol = {k:"nm", l:"Merchant", h:(x,v)=>`<span class="nm-cut" title="${esc(v)}${cab?"":" · "+esc(x.cb)}">${esc(v)}</span>`};
+  for (const [k, fmt] of [["sv",fC],["tx",fN],["md",fC]]){
+    const cur = i => mv(m,k,iY,i)||0, prev = i => mv(m,k,iP,i)||0;
+    const rowOf = (i,n) => ({rk:n+1, nm:m.nm[i]||"–", mid:m.mid[i]||"", cb:m.c[i]+" - "+bn(m.c[i]), cur:cur(i), prev:prev(i), d:cur(i)-prev(i), g:gr(cur(i),prev(i))});
+    const top = idx.filter(i => cur(i) > 0).sort((a,b) => cur(b) - cur(a)).slice(0,20).map(rowOf);
+    const drop = idx.filter(i => prev(i) > 0 && cur(i) < prev(i)).sort((a,b) => (cur(a)-prev(a)) - (cur(b)-prev(b))).slice(0,20).map(rowOf);
+    const mk = (el, rows, cols, csv) => { el._st = null; table(el, {rows, cols, page:20, search:false, full:true, csv, rowKey:x=>x.mid, onRow:mid => openInSearch("edc","mid",mid)}); };
+    mk($(`tTop_${k}`), top, [{k:"rk",l:"#",num:1}, nmCol, {k:"cur",l:`${y}`,num:1,f:fmt}, {k:"g",l:"YoY",num:1,h:(x,v)=>growthTag(v)}], `top20_${k}_${cab||"semua"}`);
+    mk($(`tDrop_${k}`), drop, [{k:"rk",l:"#",num:1}, nmCol, {k:"d",l:"Turun",num:1,h:(x,v)=>`<span class="down">${fmt(v)}</span>`}, {k:"g",l:"%",num:1,h:(x,v)=>growthTag(v)}], `drop20_${k}_${cab||"semua"}`);
+  }
+  host.hidden = false;
+  $("edcRankInfo").textContent = `${fN(idx.length)} MID${cab?` di ${bn(cab)}`:""}. YTD minggu ke-${w} ${y} dibanding minggu yang sama ${y-1}. Drop = penurunan terbesar. Klik baris untuk performance lengkap.`;
 }
 async function renderLvmUsak(){
   const host = $("lvmUsakInfo");
@@ -645,20 +648,21 @@ function msSearch(){
     items = [...g.entries()].map(([k,idx]) => ({kind:"grp", key:k, idx, sv:sum(idx, i=>src.score(i))})).sort((a,b)=>b.sv-a.sv);
     cols = [["Official name", x=>esc(m.on[x.idx[0]])], ["Jumlah MID", x=>fN(x.idx.length), 1],
             ["Cabang pengelola", x=>{ const cs=[...new Set(x.idx.map(i=>m.c[i]))]; return cs.length>1 ? `${cs.length} cabang` : esc(cs[0]+" - "+bn(cs[0])); }],
+            ["Alamat", x=>{ const a = [...new Set(x.idx.map(i=>m.al?m.al[i]:"").filter(Boolean))]; return `<span class="addr" title="${esc(a.join(" | "))}">${esc(a[0]||"–")}${a.length>1?` <small>+${a.length-1}</small>`:""}</span>`; }],
             ["SV YTD W"+m.week, x=>fC(x.sv), 1]];
   } else if (mode==="edc"){
     items = hits.map(i => ({kind:"edc", i}));
     cols = [["Nama merchant", x=>esc(m.nm[x.i]||"–")], ["MID", x=>m.mid[x.i]||"–"], ["Official name", x=>esc(m.on[x.i]||"–")],
-            ["Cabang pengelola", x=>esc(m.c[x.i]+" - "+bn(m.c[x.i]))], ["SV YTD W"+m.week, x=>fC(src.score(x.i)), 1]];
+            ["Cabang pengelola", x=>esc(m.c[x.i]+" - "+bn(m.c[x.i]))], ["Alamat", x=>`<span class="addr" title="${esc(m.al?m.al[x.i]:"")}">${esc(m.al?m.al[x.i]:""||"–")}</span>`], ["SV YTD W"+m.week, x=>fC(src.score(x.i)), 1]];
   } else if (mode==="lvm"){
     items = hits.map(i => ({kind:"lvm", i}));
     cols = [["Nama merchant", x=>esc(m.nm[x.i]||"–")], ["MID", x=>m.mid[x.i]||"–"], ["Cabang pengelola", x=>esc(m.c[x.i]+" - "+bn(m.c[x.i]))],
-            ["Grading", x=>esc(cv(m.g,x.i))], ["SV YTD", x=>fC(m.svy[x.i]), 1]];
+            ["Grading", x=>esc(cv(m.g,x.i))], ["Alamat", x=>`<span class="addr" title="${esc(m.al?m.al[x.i]:"")}">${esc(m.al?m.al[x.i]:""||"–")}</span>`], ["SV YTD", x=>fC(m.svy[x.i]), 1]];
   } else {
     const ms = D.atm.machines;
     items = hits.map(i => ({kind:"atm", i}));
     cols = [["ID mesin", x=>esc(ms[x.i].id)], ["Nama lokasi", x=>esc(ms[x.i].nm)], ["Jenis", x=>`<span class="pill">${ms[x.i].j}</span>`],
-            ["Cabang pengelola", x=>esc(ms[x.i].c+" - "+bn(ms[x.i].c))], ["FBI YTD", x=>fC(sum(ms[x.i].f)), 1]];
+            ["Cabang pengelola", x=>esc(ms[x.i].c+" - "+bn(ms[x.i].c))], ["Alamat", x=>`<span class="addr" title="${esc(ms[x.i].al)}">${esc(ms[x.i].al||"–")}</span>`], ["FBI YTD", x=>fC(sum(ms[x.i].f)), 1]];
   }
   const key = x => x.kind==="grp" ? "g:"+x.key : x.kind+":"+x.i;
   const pages = Math.max(1, Math.ceil(items.length/MS_PER)); MS.page = Math.min(MS.page, pages-1);
@@ -759,7 +763,8 @@ function lvmDetail(i){
   const pct = (g, now) => (now-g) ? g/(now-g) : null;
   const fields = [
     ["Nama merchant", esc(m.nm[i]||"–")], ["MID static", m.mid[i]||"–"], ["MID dynamic", m.mid2[i]||"–"], ["No. rekening", m.rek[i]||"–"],
-    ["Cabang pengelola", esc(m.c[i]+" - "+bn(m.c[i]))], ["LOB", esc(cv(m.lob,i))], ["Kabupaten/kota", esc(cv(m.kab,i))],
+    ["Cabang pengelola", esc(m.c[i]+" - "+bn(m.c[i]))], ["LOB", esc(cv(m.lob,i))], ["Alamat", esc((m.al && m.al[i]) || "–")],
+    ["Kecamatan", m.kec ? esc(cv(m.kec,i)) : "–"], ["Kabupaten/kota", esc(cv(m.kab,i))],
     ["Tanggal registrasi", m.d[i] ? m.d[i].split("-").reverse().join("-") : "–"], ["Jenis usaha", esc(cv(m.ct,i))], ["Tipe akun", esc(cv(m.ta,i))],
     ["Status transaksi", esc(cv(m.st,i))], ["Grading", esc(cv(m.g,i))], ["USAK", m.u[i] ? "Ya" : "Tidak"],
     ["Status rekening", esc(cv(m.sr,i))], ["Card dongle", esc(cv(m.dg,i))], ["Tagging akuisisi", esc(cv(m.tg,i))]];
@@ -1130,10 +1135,10 @@ async function renderWPR(){
     {k:"y",l:"SV YTD",num:1,f:fC}, {k:"fb",l:"FBI YTD",num:1,f:fC}, {k:"fq",l:"Frek YTD",num:1,f:fN}]});
 
   // daftar merchant (pivot per nama)
-  $("tWMer")._st = null;
   table($("tWMer"), {rows:idx.map(i => ({i, nm:W.nm[i], nmid:W.nmid[i], cb:W.c[i]+" - "+bn(W.c[i]), s:W.s[i], e:W.e[i], l:W.l[i],
       w:W.weeks.map((_,j)=>W.sv[j][i]), y:W.svy[i], fb:W.fby[i], fq:W.fqy[i], mids:W.mids[i]})),
-    sort:"y", page:25, full:true, freeze:2, csv:"wpr_merchant", rowKey:x=>x.i, onRow:k => wprDetail(+k), cols:[
+    sort:"y", page:25, full:true, freeze:2, csv:"wpr_merchant", rowKey:x=>x.i, onRow:k => wprDetail(+k),
+    needQuery:`Ketik nama merchant, MID, cabang, atau segmen di kolom pencarian untuk menampilkan data (${fN(idx.length)} merchant tersedia).`, cols:[
     {k:"nm",l:"Merchant"}, {k:"nmid",l:"MID",num:1,f:fN}, {k:"cb",l:"Cabang"}, ...wkCols,
     {k:"g",l:`${LW} vs ${PW}`,num:1,v:x=>gr(x.w[last],x.w[prev]),h:(x,v)=>growthTag(v)},
     {k:"y",l:"SV YTD",num:1,f:fC}, {k:"fb",l:"FBI YTD",num:1,f:fC}, {k:"fq",l:"Frek YTD",num:1,f:fN},
@@ -1222,7 +1227,7 @@ function subTitle(){
     wpr: D.wpr ? `Merchant EDC & E-Commerce, minggu ke-${D.wpr.weeks[0]} sampai ${D.wpr.weeks[D.wpr.weeks.length-1]} ${D.wpr.year} dan year to date. Sumber: ${D.wpr.file}` : ""}[TAB];
 }
 function renderTab(){
-  $("pageTitle").textContent = TITLES[TAB]; $("pageSub").textContent = subTitle();
+  $("pageTitle").textContent = TAB === "edc" ? `Merchant W${D.edc.week} ${D.edc.year}` : TAB === "wpr" && D.wpr ? `WPR W${D.wpr.weeks[D.wpr.weeks.length-1]} ${D.wpr.year}` : TITLES[TAB]; $("pageSub").textContent = subTitle();
   try { RENDER[TAB](); } catch(e){ console.error(e); }
 }
 function goTab(t){
@@ -1247,7 +1252,7 @@ function start(){
   opts($("edcLob"), [...new Set(D.edc.cube.map(r=>r[3]))].sort());
   opts($("edcTipe"), [...new Set(D.edc.cube.map(r=>r[4]))].filter(v=>v!=="-").sort());
   opts($("lvmKelas"), [...new Set(Object.values(KELAS))].sort());
-  $("navEdc").innerHTML = `<i class="dot d-edc"></i>Merchant W${D.edc.week} 🟢`;
+  $("navEdc").innerHTML = `<i class="dot d-edc"></i>Merchant W${D.edc.week}`;
   $("navWpr").hidden = !D.wpr;
   if (D.wpr) $("navWpr").innerHTML = `<i class="dot d-wpr"></i>WPR W${D.wpr.weeks[D.wpr.weeks.length-1]} ${D.wpr.year}`;
   $("userLine").textContent = USER.nama;
@@ -1265,7 +1270,6 @@ $("tabs").addEventListener("click", e => { const b = e.target.closest("button[da
 ["atmJenis","atmGroup","atmMetric","edcSeg","edcLob","edcTipe","lvmKelas"].forEach(id => $(id).addEventListener("change", renderTab));
 $("lobArea").addEventListener("change", () => { $("lobCab").value = ""; renderEdcLob(); });
 $("edcRankCab").addEventListener("change", renderEdcRank);
-$("edcRankMetric").addEventListener("click", e => { const b = e.target.closest("button[data-k]"); if (!b) return; RANK.edc = b.dataset.k; renderEdcRank(); });
 $("lvmUsakCab").addEventListener("change", renderLvmUsak);
 $("ovEdcSeg").addEventListener("change", renderOvDrops);
 ["wSeg","wEnv"].forEach(id => $(id).addEventListener("change", () => { $("wCab").value = ""; renderWPR(); }));

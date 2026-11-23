@@ -390,3 +390,24 @@ tr.clk:hover td{background:#eef4fc!important}
 #wKpis .kpi{padding:12px 14px}
 #wKpis .kpi .val{font-size:19px;white-space:nowrap}
 #wKpis .kpi .lbl{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* v17: rapikan tabel */
+#edcKpis{position:static!important;box-shadow:none!important}
+.tri{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:6px}
+.tri-col{min-width:0}
+.tri-col h5{margin:8px 0 0;font-size:12.5px;color:var(--text-2);font-weight:700}
+.tri .tbl-tools{margin:4px 0 6px}
+.tri table{font-size:12.5px}
+.tri th,.tri td{padding:7px 8px}
+.nm-cut{display:inline-block;max-width:190px;overflow:hidden;text-overflow:ellipsis;vertical-align:bottom}
+td.txt{max-width:280px;overflow:hidden;text-overflow:ellipsis}
+.addr{display:inline-block;max-width:300px;overflow:hidden;text-overflow:ellipsis;vertical-align:bottom;color:var(--text-2)}
+.addr small{color:var(--muted)}
+.empty-q{padding:26px 16px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:10px;font-size:13px}
+@media (max-width:1200px){ .tri{grid-template-columns:1fr} }
+.mc-sv.tight{font-size:8.5px}
+.tri .nm-cut{max-width:132px}
+.tri th,.tri td{padding:7px 6px}
+.tri td.num .up,.tri td.num .down{font-size:11.5px}
+.tri .tbl-tools .note{font-size:11.5px}
+.tri .tbl-tools .btn{padding:3px 8px;font-size:11.5px}

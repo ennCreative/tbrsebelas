@@ -384,3 +384,9 @@ tfoot td{font-weight:700;background:#f6f8fa;position:sticky;bottom:0;color:var(-
 .rank-grid .tbl-tools{margin-top:6px}
 tr.clk{cursor:pointer}
 tr.clk:hover td{background:#eef4fc!important}
+
+.d-wpr{background:#f5b49a}
+.mids{font-size:11.5px;color:var(--text-2);white-space:normal;word-break:break-all;display:inline-block;max-width:340px}
+#wKpis .kpi{padding:12px 14px}
+#wKpis .kpi .val{font-size:19px;white-space:nowrap}
+#wKpis .kpi .lbl{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

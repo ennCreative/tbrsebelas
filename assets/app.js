@@ -718,12 +718,12 @@ function edcDetail(idx, groupKey){
       ["Nama merchant", esc(m.nm[i0]||"–")], ["MID", m.mid[i0]||"–"], ["Official name", esc(m.on[i0]||"–")],
       ["Cabang pengelola", esc(m.c[i0]+" - "+bn(m.c[i0]))], ["Segment", esc(m.s[i0]||"–")],
       ["LOB", esc(m.l[i0]||"–") + (m.l5[i0] && m.l5[i0]!=="Lainnya" ? `<small>LOB fokus: ${esc(m.l5[i0])}</small>` : "")],
-      ["MDR", mdrList(m,[i0])], ["No. rekening", m.rek[i0]||"–"], ["Jumlah EDC", fN(m.edc[i0])]]
+      ["MDR", mdrList(m,[i0])], ["No. rekening", m.rek[i0]||"–"], ["Jumlah EDC", fN(m.edc[i0])], ["Alamat", esc((m.al&&m.al[i0])||"–")]]
     : [
       ["Official name", esc(m.on[i0]||"–")], ["Jumlah MID", fN(idx.length)],
       ["Jumlah nama merchant", fN(new Set(idx.map(i=>m.nm[i])).size)],
       ["Cabang pengelola", listText(idx.map(i=>m.c[i]), c=>c+" - "+bn(c))], ["Segment", listText(idx.map(i=>m.s[i]))],
-      ["LOB", listText(idx.map(i=>m.l[i]))], ["MDR", mdrList(m,idx)],
+      ["LOB", listText(idx.map(i=>m.l[i]))], ["MDR", mdrList(m,idx)], ["Alamat", m.al ? listText(idx.map(i=>m.al[i])) : "–"],
       ["No. rekening", `${fN(new Set(idx.map(i=>m.rek[i]).filter(Boolean)).size)} rekening`], ["Jumlah EDC", fN(sum(idx,i=>m.edc[i]))]];
   const members = single ? "" : `<div class="panel"><div class="panel-head"><h3>Merchant dalam official name ini</h3><p>Klik baris untuk melihat performance per MID</p></div><div id="msMembers"></div></div>`;
   $("msDetail").innerHTML = `
@@ -950,6 +950,7 @@ function prodPanel({tab, color, name, per, lbl, val, cmp, subs, spark, sl}){
     <div class="p-go">Lihat detail ${name}</div></button>`;
 }
 function renderSummary(){
+  renderOvDrops();
   const A = D.atm, E = D.edc, L = D.lvm, n = A.last+1;
   const at = atmSummary(AREA), ed = edcSummary(AREA), lv = lvmSummary(AREA);
   const {y,m,d} = lvmDate();
@@ -1045,10 +1046,169 @@ function branchSlices(){            // 5 cabang terbesar + lainnya, untuk area t
   return top;
 }
 
+
+/* ================================================================== WPR (Weekly Performance Report) */
+const WPR = {sel:-1};
+const wl = w => "W" + w;
+function wprIdx(){
+  const W = BOX.wpr, seg = $("wSeg").value, env = $("wEnv").value, cab = $("wCab").value, out = [];
+  for (let i=0;i<W.n;i++){
+    if (!inArea(W.a[i])) continue;
+    if (seg && W.s[i] !== seg) continue;
+    if (env && !W.e[i].split("/").includes(env)) continue;
+    if (cab && W.c[i] !== cab) continue;
+    out.push(i);
+  }
+  return out;
+}
+function wprFilters(){
+  const W = BOX.wpr, inA = []; for (let i=0;i<W.n;i++) if (inArea(W.a[i])) inA.push(i);
+  opts($("wSeg"), [...new Set(inA.map(i=>W.s[i]).filter(Boolean))].sort(), "Semua segmen");
+  opts($("wEnv"), [...new Set(inA.flatMap(i=>W.e[i].split("/")).filter(Boolean))].sort(), "Semua");
+  cabOptions($("wCab"), inA.map(i=>W.c[i]));
+}
+async function renderWPR(){
+  if (!D.wpr){ $("wInfo").textContent = "Belum ada data WPR. Taruh file Performance_WPR_... di folder data lalu jalankan update."; $("wBody").hidden = true; return; }
+  if (!BOX.wpr){
+    $("wBody").hidden = true; $("wInfo").textContent = "Menyiapkan data WPR…";
+    try { await loadBox("wpr"); } catch(e){ $("wInfo").textContent = "Gagal memuat data WPR: " + e.message; return; }
+    if (TAB !== "wpr") return;
+  }
+  const W = BOX.wpr, K = W.weeks.length, last = K-1, prev = K-2, LW = wl(W.weeks[last]), PW = wl(W.weeks[prev]);
+  wprFilters();
+  const idx = wprIdx();
+  $("wBody").hidden = false;
+  $("wInfo").textContent = `${fN(idx.length)} merchant (dari ${fN(W.nmids)} MID; nama merchant yang sama sudah digabung).`;
+  const tot = (k,j) => sum(idx, i => W[k][j][i]), ytd = k => sum(idx, i => W[k][i]);
+  const act = idx.filter(i => W.sv[last][i] > 0).length, actP = idx.filter(i => W.sv[prev][i] > 0).length;
+  const avg4 = sum(W.weeks.map((_,j) => tot("sv",j))) / K;
+  $("wKpis").innerHTML =
+    kpi(`Sales volume ${LW}`, fRp(tot("sv",last)), grHtml(tot("sv",last), tot("sv",prev), `vs ${PW}`)) +
+    kpi(`Frekuensi ${LW}`, fN(tot("fq",last)), grHtml(tot("fq",last), tot("fq",prev), `vs ${PW}`)) +
+    kpi(`Fee based income ${LW}`, fRp(tot("fb",last)), grHtml(tot("fb",last), tot("fb",prev), `vs ${PW}`)) +
+    kpi(`Rata-rata SV 4 minggu`, fRp(avg4), `${LW} ${grHtml(tot("sv",last), avg4, "vs rata-rata")}`) +
+    kpi(`Merchant aktif ${LW}`, fN(act), `${fP(idx.length ? act/idx.length : 0)} dari ${fN(idx.length)}<br>${PW}: ${fN(actP)}`) +
+    kpi(`Sales volume YTD`, fRp(ytd("svy")), `Frek ${fC(ytd("fqy"))}`) +
+    kpi(`Fee based income YTD`, fRp(ytd("fby")), `rata-rata ${fRp(ytd("fby")/Math.max(1, W.weeks[last]))}/minggu`);
+  const labs = W.weeks.map(wl);
+  for (const [k, fmt, col] of [["sv",fC,C.s2],["fq",fN,C.s1],["fb",fC,C.s3]])
+    drawChart($("cW_"+k), {labels:labs, fmt, series:[S_({sv:"Sales volume",fq:"Frekuensi",fb:"FBI"}[k], labs.map((_,j)=>tot(k,j)), labs.map((_,j)=> j===last ? col : col+"88"))]});
+
+  // per segmen
+  const bySeg = {};
+  for (const i of idx){ const g = bySeg[W.s[i]||"Lainnya"] || (bySeg[W.s[i]||"Lainnya"] = {s:W.s[i]||"Lainnya", n:0, w:W.weeks.map(()=>0), y:0, fb:0});
+    g.n++; W.weeks.forEach((_,j) => g.w[j] += W.sv[j][i]); g.y += W.svy[i]; g.fb += W.fby[i]; }
+  const ySum = ytd("svy");
+  const wkCols = W.weeks.map((w,j) => ({k:"w"+j, l:`SV ${wl(w)}`, num:1, v:x=>x.w[j], f:fC}));
+  const segRows = Object.values(bySeg);
+  $("tWSeg")._st = null;
+  table($("tWSeg"), {rows:segRows, sort:"y", search:false, full:true, page:20, csv:"wpr_segmen", cols:[
+    {k:"s",l:"Segmen"}, {k:"n",l:"Merchant",num:1,f:fN}, ...wkCols,
+    {k:"g",l:`${LW} vs ${PW}`,num:1,v:x=>gr(x.w[last],x.w[prev]),h:(x,v)=>growthTag(v)},
+    {k:"y",l:"SV YTD",num:1,f:fC}, {k:"sh",l:"Porsi YTD",num:1,v:x=>ySum?x.y/ySum:0,f:fP}, {k:"fb",l:"FBI YTD",num:1,f:fC}],
+    foot: r => ["Total", fN(sum(r,x=>x.n)), ...W.weeks.map((_,j)=>fC(sum(r,x=>x.w[j]))), growthTag(gr(sum(r,x=>x.w[last]), sum(r,x=>x.w[prev]))), fC(sum(r,x=>x.y)), "", fC(sum(r,x=>x.fb))]});
+
+  // naik / turun
+  const mvRow = i => ({i, nm:W.nm[i], cb:W.c[i]+" - "+bn(W.c[i]), s:W.s[i], nmid:W.nmid[i], p:W.sv[prev][i], c:W.sv[last][i], d:W.sv[last][i]-W.sv[prev][i]});
+  const moved = idx.map(mvRow);
+  $("wMoveT").textContent = `Naik & turun terbesar ${LW} vs ${PW}`;
+  const mvCols = [{k:"rk",l:"#",num:1}, {k:"nm",l:"Merchant"}, {k:"cb",l:"Cabang"}, {k:"s",l:"Segmen"},
+    {k:"p",l:`SV ${PW}`,num:1,f:fC}, {k:"c",l:`SV ${LW}`,num:1,f:fC}, {k:"d",l:"Selisih",num:1,h:(x,v)=>`<span class="${v>=0?"up":"down"}">${v>=0?"+":""}${fC(v)}</span>`}];
+  const mkMv = (el, rows) => { el._st = null; table(el, {rows:rows.map((x,n)=>({...x, rk:n+1})), cols:mvCols, page:10, search:false, full:true,
+    rowKey:x=>x.i, onRow:k => wprDetail(+k)}); };
+  mkMv($("tWUp"), moved.filter(x=>x.d>0).sort((a,b)=>b.d-a.d).slice(0,10));
+  mkMv($("tWDown"), moved.filter(x=>x.d<0).sort((a,b)=>a.d-b.d).slice(0,10));
+
+  // per cabang
+  const byC = {};
+  for (const i of idx){ const g = byC[W.c[i]] || (byC[W.c[i]] = {c:W.c[i], a:W.a[i], n:0, w:W.weeks.map(()=>0), y:0, fb:0, fq:0});
+    g.n++; W.weeks.forEach((_,j) => g.w[j] += W.sv[j][i]); g.y += W.svy[i]; g.fb += W.fby[i]; g.fq += W.fqy[i]; }
+  $("tWCab")._st = null;
+  table($("tWCab"), {rows:Object.values(byC), sort:"y", full:true, page:25, csv:"wpr_cabang", cols:[
+    {k:"cb",l:"Cabang",v:x=>x.c+" - "+bn(x.c)}, {k:"a",l:"Area",f:title}, {k:"n",l:"Merchant",num:1,f:fN}, ...wkCols,
+    {k:"g",l:`${LW} vs ${PW}`,num:1,v:x=>gr(x.w[last],x.w[prev]),h:(x,v)=>growthTag(v)},
+    {k:"y",l:"SV YTD",num:1,f:fC}, {k:"fb",l:"FBI YTD",num:1,f:fC}, {k:"fq",l:"Frek YTD",num:1,f:fN}]});
+
+  // daftar merchant (pivot per nama)
+  $("tWMer")._st = null;
+  table($("tWMer"), {rows:idx.map(i => ({i, nm:W.nm[i], nmid:W.nmid[i], cb:W.c[i]+" - "+bn(W.c[i]), s:W.s[i], e:W.e[i], l:W.l[i],
+      w:W.weeks.map((_,j)=>W.sv[j][i]), y:W.svy[i], fb:W.fby[i], fq:W.fqy[i], mids:W.mids[i]})),
+    sort:"y", page:25, full:true, freeze:2, csv:"wpr_merchant", rowKey:x=>x.i, onRow:k => wprDetail(+k), cols:[
+    {k:"nm",l:"Merchant"}, {k:"nmid",l:"MID",num:1,f:fN}, {k:"cb",l:"Cabang"}, ...wkCols,
+    {k:"g",l:`${LW} vs ${PW}`,num:1,v:x=>gr(x.w[last],x.w[prev]),h:(x,v)=>growthTag(v)},
+    {k:"y",l:"SV YTD",num:1,f:fC}, {k:"fb",l:"FBI YTD",num:1,f:fC}, {k:"fq",l:"Frek YTD",num:1,f:fN},
+    {k:"s",l:"Segmen"}, {k:"e",l:"Business env"}, {k:"l",l:"LOB"}, {k:"mids",l:"Daftar MID",h:(x,v)=>`<span class="mids">${esc(v)}</span>`}]});
+  if (WPR.sel >= 0 && idx.includes(WPR.sel)) wprDetail(WPR.sel, true); else { WPR.sel = -1; $("wDetail").innerHTML = ""; }
+}
+function wprDetail(i, quiet){
+  const W = BOX.wpr, K = W.weeks.length, last = K-1, prev = K-2, LW = wl(W.weeks[last]), PW = wl(W.weeks[prev]);
+  WPR.sel = i;
+  const labs = W.weeks.map(wl);
+  $("wDetail").innerHTML = `
+    <div class="panel ms-head"><div class="ms-title"><h2>${esc(W.nm[i])}</h2><span class="pill">${fN(W.nmid[i])} MID</span><span class="pill">${esc(title(W.a[i]))}</span><button class="btn-sm ms-close" data-close>Tutup</button></div>
+      <dl class="ms-fields">${[["Official name", esc(W.on[i]||"–")], ["Cabang pengelola", esc(W.c[i]+" - "+bn(W.c[i]))], ["Segmen", esc(W.s[i]||"–")],
+        ["Business env", esc(W.e[i]||"–")], ["LOB", esc(W.l[i]||"–")], ["Jumlah rekening", fN(W.nrek[i])], ["Alamat", esc(W.al[i]||"–")],
+        ["MID", `<span class="mids">${esc(W.mids[i])}</span>`]].map(f=>fieldHtml(f[0],f[1])).join("")}</dl></div>
+    <div class="kpis">
+      ${kpi(`Sales volume ${LW}`, fRp(W.sv[last][i]), grHtml(W.sv[last][i], W.sv[prev][i], `vs ${PW}`))}
+      ${kpi(`Frekuensi ${LW}`, fN(W.fq[last][i]), grHtml(W.fq[last][i], W.fq[prev][i], `vs ${PW}`))}
+      ${kpi(`FBI ${LW}`, fRp(W.fb[last][i]), grHtml(W.fb[last][i], W.fb[prev][i], `vs ${PW}`))}
+      ${kpi("Sales volume YTD", fRp(W.svy[i]), `Frek ${fN(W.fqy[i])}`)}
+      ${kpi("FBI YTD", fRp(W.fby[i]), "")}
+    </div>
+    <div class="grid g3">${[["sv","Sales volume"],["fq","Frekuensi"],["fb","Fee based income"]].map(([k,t]) =>
+      `<div class="panel"><div class="panel-head"><h3>${t} per minggu</h3></div><div class="chart sm"><div id="wd_${k}" class="mc"></div></div></div>`).join("")}</div>`;
+  for (const [k, fmt, col] of [["sv",fC,C.s2],["fq",fN,C.s1],["fb",fC,C.s3]])
+    drawChart($("wd_"+k), {labels:labs, fmt, series:[S_(k, labs.map((_,j)=>W[k][j][i]), labs.map((_,j)=> j===last ? col : col+"88"))]});
+  $("wDetail").querySelector("[data-close]").onclick = () => { WPR.sel = -1; $("wDetail").innerHTML = ""; };
+  if (!quiet) $("wDetail").scrollIntoView({behavior:"smooth", block:"start"});
+}
+
+/* ================================================================== OVERVIEW: TOP 10 DROP */
+async function renderOvDrops(){
+  // ATM & CRM: volume bulan terakhir vs bulan sebelumnya, per mesin
+  const A = D.atm, n = A.last+1, Lm = BLN[A.last], Pm = BLN[A.last-1];
+  const ms = A.machines.filter(m => inArea(m.a) && n > 1 && m.v[n-2] > 0 && m.v[n-1] < m.v[n-2])
+    .map(m => ({id:m.id, nm:m.nm, j:m.j, cb:m.c+" - "+bn(m.c), p:m.v[n-2], c:m.v[n-1], d:m.v[n-1]-m.v[n-2], g:gr(m.v[n-1], m.v[n-2])}))
+    .sort((a,b) => a.d - b.d).slice(0,10).map((x,i) => ({...x, rk:i+1}));
+  $("ovAtmT").textContent = `Top 10 volume drop ATM & CRM, ${Lm} vs ${Pm} ${A.year}`;
+  $("ovAtmInfo").textContent = "Data per mesin hanya tersedia per bulan tahun berjalan, jadi pembandingnya bulan sebelumnya. Klik baris untuk performance lengkap.";
+  $("tOvAtmDrop")._st = null;
+  table($("tOvAtmDrop"), {rows:ms, search:false, full:true, page:10, csv:"top10_drop_atm", rowKey:x=>x.id, onRow:id => openInSearch("atm","id",id), cols:[
+    {k:"rk",l:"#",num:1}, {k:"id",l:"ID mesin"}, {k:"nm",l:"Nama lokasi"}, {k:"j",l:"Jenis",h:(x,v)=>`<span class="pill">${v}</span>`}, {k:"cb",l:"Cabang"},
+    {k:"p",l:`Volume ${Pm}`,num:1,f:fC}, {k:"c",l:`Volume ${Lm}`,num:1,f:fC}, {k:"d",l:"Penurunan",num:1,h:(x,v)=>`<span class="down">${fC(v)}</span>`}, {k:"g",l:"%",num:1,h:(x,v)=>growthTag(v)}]});
+
+  // EDC & E-Commerce: SV YTD vs tahun lalu, per nama merchant (MID dengan nama sama digabung)
+  if (!BOX.merchant){
+    $("ovEdcInfo").textContent = "Menyiapkan data merchant…";
+    try { await loadBox("merchant"); } catch(e){ $("ovEdcInfo").textContent = "Gagal memuat data merchant: " + e.message; return; }
+    if (TAB !== "ringkasan") return;
+  }
+  const m = BOX.merchant, L = m.labels.length, iY = L-3, iP = L-4;
+  const segs = new Set(); for (let i=0;i<m.n;i++) if (inArea(m.a[i]) && m.s[i]) segs.add(m.s[i]);
+  opts($("ovEdcSeg"), [...segs].sort(), "Semua segmen");
+  const seg = $("ovEdcSeg").value, G = new Map();
+  for (let i=0;i<m.n;i++){
+    if (!inArea(m.a[i]) || (seg && m.s[i] !== seg)) continue;
+    const k = (m.nm[i]||("MID "+m.mid[i])).toUpperCase().replace(/\s+/g," ").trim();
+    const g = G.get(k) || (G.set(k, {nm:m.nm[i]||k, idx:[], c:0, p:0}), G.get(k));
+    g.idx.push(i); g.c += mv(m,"sv",iY,i)||0; g.p += mv(m,"sv",iP,i)||0;
+  }
+  const rows = [...G.values()].filter(g => g.p > 0 && g.c < g.p).map(g => {
+      const top = g.idx.reduce((a,b) => ((mv(m,"sv",iP,b)||0) > (mv(m,"sv",iP,a)||0) ? b : a));
+      return {nm:g.nm, nmid:g.idx.length, cb:m.c[top]+" - "+bn(m.c[top]), s:m.s[top], p:g.p, c:g.c, d:g.c-g.p, g:gr(g.c,g.p)}; })
+    .sort((a,b) => a.d - b.d).slice(0,10).map((x,i) => ({...x, rk:i+1}));
+  $("ovEdcInfo").textContent = `Sales volume YTD minggu ke-${m.week} ${m.year} dibanding minggu yang sama ${m.year-1}, per nama merchant (MID dengan nama sama digabung). Klik baris untuk performance lengkap.`;
+  $("tOvEdcDrop")._st = null;
+  table($("tOvEdcDrop"), {rows, search:false, full:true, page:10, csv:"top10_sv_drop_edc", rowKey:x=>x.nm, onRow:nm => openInSearch("edc","nm",nm), cols:[
+    {k:"rk",l:"#",num:1}, {k:"nm",l:"Merchant"}, {k:"nmid",l:"MID",num:1,f:fN}, {k:"cb",l:"Cabang"}, {k:"s",l:"Segmen"},
+    {k:"p",l:`SV ${m.year-1}`,num:1,f:fC}, {k:"c",l:`SV ${m.year}`,num:1,f:fC}, {k:"d",l:"Penurunan",num:1,h:(x,v)=>`<span class="down">${fC(v)}</span>`}, {k:"g",l:"%",num:1,h:(x,v)=>growthTag(v)}]});
+}
+
 /* ================================================================== app */
-const RENDER = {ringkasan:renderSummary, atm:renderATM, edc:renderEDC, lvm:renderLVM, cabang:renderCabang, merchant:renderMerchant, users:renderUsers};
+const RENDER = {ringkasan:renderSummary, atm:renderATM, edc:renderEDC, lvm:renderLVM, cabang:renderCabang, merchant:renderMerchant, users:renderUsers, wpr:renderWPR};
 let TAB = "ringkasan";
-const TITLES = {ringkasan:"Overview", atm:"ATM & CRM", edc:"EDC Merchant", lvm:"Livin' Merchant", cabang:"Scorecard cabang", merchant:"Cari merchant", users:"Kelola pengguna"};
+const TITLES = {ringkasan:"Overview", atm:"ATM & CRM", edc:"EDC Merchant", lvm:"Livin' Merchant", cabang:"Scorecard cabang", merchant:"Pencarian", users:"Kelola pengguna", wpr:"Weekly Performance Report"};
 function subTitle(){
   const {y,m,d} = lvmDate();
   return {
@@ -1058,7 +1218,8 @@ function subTitle(){
     lvm:`Data sampai ${d} ${BLN[m-1]} ${y}`,
     cabang:`ATM ${BLN[D.atm.last]}, EDC minggu ${D.edc.week}, Livin' Merchant ${d} ${BLN[m-1]} ${y}`,
     merchant:`Cari merchant EDC & E-Commerce, Livin' Merchant, atau mesin ATM, lalu lihat performance lengkapnya`,
-    users:`Setujui pendaftaran, atur akses area, dan nonaktifkan akun`}[TAB];
+    users:`Setujui pendaftaran, atur akses area, dan nonaktifkan akun`,
+    wpr: D.wpr ? `Merchant EDC & E-Commerce, minggu ke-${D.wpr.weeks[0]} sampai ${D.wpr.weeks[D.wpr.weeks.length-1]} ${D.wpr.year} dan year to date. Sumber: ${D.wpr.file}` : ""}[TAB];
 }
 function renderTab(){
   $("pageTitle").textContent = TITLES[TAB]; $("pageSub").textContent = subTitle();
@@ -1087,6 +1248,8 @@ function start(){
   opts($("edcTipe"), [...new Set(D.edc.cube.map(r=>r[4]))].filter(v=>v!=="-").sort());
   opts($("lvmKelas"), [...new Set(Object.values(KELAS))].sort());
   $("navEdc").innerHTML = `<i class="dot d-edc"></i>Merchant W${D.edc.week} 🟢`;
+  $("navWpr").hidden = !D.wpr;
+  if (D.wpr) $("navWpr").innerHTML = `<i class="dot d-wpr"></i>WPR W${D.wpr.weeks[D.wpr.weeks.length-1]} ${D.wpr.year}`;
   $("userLine").textContent = USER.nama;
   $("roleLine").textContent = [USER.jabatan, USER.unit].filter(Boolean).join(", ");
   $("meFoto").outerHTML = avatarHtml(USER.foto, USER.nama, "sm").replace('class="avatar sm"', 'class="avatar sm" id="meFoto"');
@@ -1104,6 +1267,9 @@ $("lobArea").addEventListener("change", () => { $("lobCab").value = ""; renderEd
 $("edcRankCab").addEventListener("change", renderEdcRank);
 $("edcRankMetric").addEventListener("click", e => { const b = e.target.closest("button[data-k]"); if (!b) return; RANK.edc = b.dataset.k; renderEdcRank(); });
 $("lvmUsakCab").addEventListener("change", renderLvmUsak);
+$("ovEdcSeg").addEventListener("change", renderOvDrops);
+["wSeg","wEnv"].forEach(id => $(id).addEventListener("change", () => { $("wCab").value = ""; renderWPR(); }));
+$("wCab").addEventListener("change", renderWPR);
 $("lobCab").addEventListener("change", renderEdcLob);
 let msT; $("msQ").addEventListener("input", () => { clearTimeout(msT); msT = setTimeout(() => { MS.sel = null; MS.page = 0; msSearch(); }, 200); });
 $("msField").addEventListener("change", () => { MS.sel = null; MS.page = 0; msSearch(); $("msQ").focus(); });

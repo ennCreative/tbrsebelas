@@ -578,3 +578,10 @@ a.map-a:hover{text-decoration:underline}
 .rs-bt i{display:block;height:100%;background:var(--data);border-radius:999px}
 .rs-bar b{font-variant-numeric:tabular-nums;color:var(--ink)}
 .rs-bar small{color:var(--muted);text-align:right}
+/* ---- status EDC */
+.et{display:inline-block;padding:1px 7px;border-radius:999px;font-size:10.5px;font-weight:700;line-height:1.6;white-space:nowrap;vertical-align:middle;letter-spacing:.01em}
+.et.on{background:var(--good-bg);color:var(--good)}
+.et.off{background:#eceff2;color:#6b7785}
+td .et{margin-top:2px}
+.md-edc{margin:0 0 10px}
+.md-edc .et{font-size:12px;padding:3px 10px}

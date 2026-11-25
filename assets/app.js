@@ -470,12 +470,14 @@ async function renderEdcRank(){
   const m = BOX.merchant, L = m.labels.length, iY = L-3, iP = L-4, y = m.year, w = m.week;
   const idxArea = []; for (let i=0;i<m.n;i++) if (inArea(m.a[i])) idxArea.push(i);
   const cab = cabOptions($("edcRankCab"), idxArea.map(i => m.c[i]));
-  const idx = cab ? idxArea.filter(i => m.c[i] === cab) : idxArea;
+  const st = $("edcRankStat").value;
+  const idx = (cab ? idxArea.filter(i => m.c[i] === cab) : idxArea).filter(i => st === "" || (edcN(i) > 0 ? "1" : "0") === st);
+  const nAct = idx.filter(i => edcN(i) > 0).length;
   if (!RSN.rows && !RSN.p) loadReasons().then(() => { if (TAB === "edc") renderEdcRank(); }).catch(() => {});
-  const nmCol = {k:"nm", l:"Merchant", h:(x,v)=>`<span class="nm-cut" title="${esc(v)}${cab?"":" · "+esc(x.cb)}">${esc(v)}</span>${hasReason(x.mid, v)?`<span class="rs-dot" title="Sudah ada reason">R</span>`:""}`};
+  const nmCol = {k:"nm", l:"Merchant", h:(x,v)=>`<span class="nm-cut" title="${esc(v)}${cab?"":" · "+esc(x.cb)}">${esc(v)}</span>${hasReason(x.mid, v)?`<span class="rs-dot" title="Sudah ada reason">R</span>`:""}<br>${edcTag(x.edc)}`};
   for (const [k, fmt] of [["sv",fC],["tx",fN],["md",fC]]){
     const cur = i => mv(m,k,iY,i)||0, prev = i => mv(m,k,iP,i)||0;
-    const rowOf = (i,n) => ({rk:n+1, nm:m.nm[i]||"–", mid:m.mid[i]||"", cb:m.c[i]+" - "+bn(m.c[i]), cur:cur(i), prev:prev(i), d:cur(i)-prev(i), g:gr(cur(i),prev(i))});
+    const rowOf = (i,n) => ({rk:n+1, nm:m.nm[i]||"–", mid:m.mid[i]||"", cb:m.c[i]+" - "+bn(m.c[i]), cur:cur(i), prev:prev(i), d:cur(i)-prev(i), g:gr(cur(i),prev(i)), edc:edcN(i)});
     const top = idx.filter(i => cur(i) > 0).sort((a,b) => cur(b) - cur(a)).slice(0,20).map(rowOf);
     const drop = idx.filter(i => prev(i) > 0 && cur(i) < prev(i)).sort((a,b) => (cur(a)-prev(a)) - (cur(b)-prev(b))).slice(0,20).map(rowOf);
     const mk = (el, rows, cols, csv) => { el._st = null; table(el, {rows, cols, page:20, search:false, full:true, csv, rowKey:x=>x.mid || "nm:"+x.nm, onRow:k => k.startsWith("nm:") ? openMerchantMenu("", k.slice(3)) : openMerchantMenu(k, (rows.find(r => r.mid === k)||{}).nm)}); };
@@ -483,7 +485,7 @@ async function renderEdcRank(){
     mk($(`tDrop_${k}`), drop, [{k:"rk",l:"#",num:1}, nmCol, {k:"d",l:"Turun",num:1,h:(x,v)=>`<span class="down">${fmt(v)}</span>`}, {k:"g",l:"%",num:1,h:(x,v)=>growthTag(v)}], `drop20_${k}_${cab||"semua"}`);
   }
   host.hidden = false;
-  $("edcRankInfo").textContent = `${fN(idx.length)} MID${cab?` di ${bn(cab)}`:""}. YTD minggu ke-${w} ${y} dibanding minggu yang sama ${y-1}. Drop = penurunan terbesar. Klik baris untuk performance lengkap.`;
+  $("edcRankInfo").textContent = `${fN(idx.length)} MID${cab?` di ${bn(cab)}`:""} (${fN(nAct)} EDC Active, ${fN(idx.length-nAct)} EDC Inactive). YTD minggu ke-${w} ${y} dibanding minggu yang sama ${y-1}. Drop = penurunan terbesar. Klik baris untuk performance lengkap.`;
 }
 async function renderLvmUsak(){
   const host = $("lvmUsakInfo");
@@ -737,13 +739,13 @@ function edcDetail(idx, groupKey){
       ["Nama merchant", esc(m.nm[i0]||"–")], ["MID", m.mid[i0]||"–"], ["Official name", esc(m.on[i0]||"–")],
       ["Cabang pengelola", esc(m.c[i0]+" - "+bn(m.c[i0]))], ["Segment", esc(m.s[i0]||"–")],
       ["LOB", esc(m.l[i0]||"–") + (m.l5[i0] && m.l5[i0]!=="Lainnya" ? `<small>LOB fokus: ${esc(m.l5[i0])}</small>` : "")],
-      ["MDR", mdrList(m,[i0])], ["No. rekening", m.rek[i0]||"–"], ["Jumlah EDC", fN(m.edc[i0])], ["Alamat", esc((m.al&&m.al[i0])||"–")]]
+      ["MDR", mdrList(m,[i0])], ["No. rekening", m.rek[i0]||"–"], ["Jumlah EDC", `${fN(m.edc[i0])} ${edcTag(m.edc[i0])}`], ["Alamat", esc((m.al&&m.al[i0])||"–")]]
     : [
       ["Official name", esc(m.on[i0]||"–")], ["Jumlah MID", fN(idx.length)],
       ["Jumlah nama merchant", fN(new Set(idx.map(i=>m.nm[i])).size)],
       ["Cabang pengelola", listText(idx.map(i=>m.c[i]), c=>c+" - "+bn(c))], ["Segment", listText(idx.map(i=>m.s[i]))],
       ["LOB", listText(idx.map(i=>m.l[i]))], ["MDR", mdrList(m,idx)], ["Alamat", m.al ? listText(idx.map(i=>m.al[i])) : "–"],
-      ["No. rekening", `${fN(new Set(idx.map(i=>m.rek[i]).filter(Boolean)).size)} rekening`], ["Jumlah EDC", fN(sum(idx,i=>m.edc[i]))]];
+      ["No. rekening", `${fN(new Set(idx.map(i=>m.rek[i]).filter(Boolean)).size)} rekening`], ["Jumlah EDC", `${fN(sum(idx,i=>m.edc[i]))} ${edcTag(sum(idx,i=>m.edc[i]))}<br><small class="muted">${fN(idx.filter(i=>m.edc[i]>0).length)} MID EDC Active, ${fN(idx.filter(i=>!(m.edc[i]>0)).length)} MID EDC Inactive</small>`]];
   const members = single ? "" : `<div class="panel"><div class="panel-head"><h3>Merchant dalam official name ini</h3><p>Klik baris untuk melihat performance per MID</p></div><div id="msMembers"></div></div>`;
   $("msDetail").innerHTML = `
     <div class="panel ms-head"><div class="ms-title">${head}</div><dl class="ms-fields">${fields.map(f=>fieldHtml(f[0],f[1])).join("")}</dl></div>
@@ -1189,12 +1191,12 @@ async function renderOvDrops(){
   }
   const rows = [...G.values()].filter(g => g.p > 0 && g.c < g.p).map(g => {
       const top = g.idx.reduce((a,b) => ((mv(m,"sv",iP,b)||0) > (mv(m,"sv",iP,a)||0) ? b : a));
-      return {nm:g.nm, nmid:g.idx.length, cb:m.c[top]+" - "+bn(m.c[top]), s:m.s[top], p:g.p, c:g.c, d:g.c-g.p, g:gr(g.c,g.p)}; })
+      return {nm:g.nm, mid:m.mid[top]||"", nmid:g.idx.length, edc:g.idx.reduce((t,i)=>t+edcN(i),0), cb:m.c[top]+" - "+bn(m.c[top]), s:m.s[top], p:g.p, c:g.c, d:g.c-g.p, g:gr(g.c,g.p)}; })
     .sort((a,b) => a.d - b.d).slice(0,10).map((x,i) => ({...x, rk:i+1}));
   $("ovEdcInfo").textContent = `Sales volume YTD minggu ke-${m.week} ${m.year} dibanding minggu yang sama ${m.year-1}, per nama merchant (MID dengan nama sama digabung). Klik baris untuk performance lengkap.`;
   $("tOvEdcDrop")._st = null;
   table($("tOvEdcDrop"), {rows, search:false, full:true, page:10, csv:"top10_sv_drop_edc", rowKey:x=>x.nm, onRow:nm => openMerchantMenu((rows.find(r => r.nm === nm)||{}).mid || "", nm), cols:[
-    {k:"rk",l:"#",num:1}, {k:"nm",l:"Merchant"}, {k:"nmid",l:"MID",num:1,f:fN}, {k:"cb",l:"Cabang"}, {k:"s",l:"Segmen"},
+    {k:"rk",l:"#",num:1}, {k:"nm",l:"Merchant",h:(x,v)=>`${esc(v)} ${edcTag(x.edc)}`}, {k:"nmid",l:"MID",num:1,f:fN}, {k:"cb",l:"Cabang"}, {k:"s",l:"Segmen"},
     {k:"p",l:`SV ${m.year-1}`,num:1,f:fC}, {k:"c",l:`SV ${m.year}`,num:1,f:fC}, {k:"d",l:"Penurunan",num:1,h:(x,v)=>`<span class="down">${fC(v)}</span>`}, {k:"g",l:"%",num:1,h:(x,v)=>growthTag(v)}]});
 }
 
@@ -1685,8 +1687,8 @@ async function edcDropZip(){
     const safe = s => String(s).replace(/[\\\/:*?"<>|]+/g," ").replace(/\s+/g," ").trim();
     const scope = AREA ? title(AREA) : "Region XI";
     const period = `YTD minggu ke-${w} ${y} dibanding minggu ke-${w} ${y-1}`;
-    const head = ["No","MID","Nama merchant","Nama official","Alamat","Segmen","LOB",`SV YTD W${w} ${y-1}`,`SV YTD W${w} ${y}`,"Penurunan SV","% YoY",`Frek YTD W${w} ${y-1}`,`Frek YTD W${w} ${y}`,`MDFG YTD W${w} ${y-1}`,`MDFG YTD W${w} ${y}`,"Jumlah EDC"];
-    const widths = [5,18,32,32,44,14,22,16,16,16,9,14,14,14,14,10];
+    const head = ["No","MID","Nama merchant","Nama official","Alamat","Segmen","LOB",`SV YTD W${w} ${y-1}`,`SV YTD W${w} ${y}`,"Penurunan SV","% YoY",`Frek YTD W${w} ${y-1}`,`Frek YTD W${w} ${y}`,`MDFG YTD W${w} ${y-1}`,`MDFG YTD W${w} ${y}`,"Jumlah EDC","Status EDC"];
+    const widths = [5,18,32,32,44,14,22,16,16,16,9,14,14,14,14,10,14];
     const files = [], sum_ = [["No","Area","Kode","Cabang","MID di cabang","MID SV turun","Total penurunan Top 20 (Rp)","Total penurunan semua MID turun (Rp)"].map(v=>({v,s:2}))];
     codes.forEach((c, k) => {
       const idx = byCab[c];
@@ -1700,7 +1702,7 @@ async function edcDropZip(){
         head.map(v => ({v, s:2})),
         ...top.map((i,n) => { const a = sv(i,iP), b = sv(i,iY);
           return [n+1, String(m.mid[i]||""), m.nm[i]||"", (m.on && m.on[i]) || "", (m.al && m.al[i]) || "", m.s[i]||"", (m.l && m.l[i]) || "",
-                  Math.round(a), Math.round(b), {v:Math.round(b-a), s:6}, {v:a ? (b-a)/a : 0, s:4}, Math.round(tx(i,iP)), Math.round(tx(i,iY)), Math.round(md(i,iP)), Math.round(md(i,iY)), m.edc ? (m.edc[i]||0) : ""]; })];
+                  Math.round(a), Math.round(b), {v:Math.round(b-a), s:6}, {v:a ? (b-a)/a : 0, s:4}, Math.round(tx(i,iP)), Math.round(tx(i,iY)), Math.round(md(i,iP)), Math.round(md(i,iY)), m.edc ? (m.edc[i]||0) : "", (m.edc && m.edc[i] > 0) ? "EDC Active" : "EDC Inactive"]; })];
       if (!top.length) rows.push([{v:"Tidak ada merchant dengan penurunan sales volume di cabang ini.", s:5}]);
       rows.push([], [{v:`Sumber: Merchant W${w} ${y}. Diunduh dari Dashboard TBR Region XI, ${new Date().toLocaleString("id-ID")}.`, s:5}]);
       const fname = `${safe(c+" - "+bn(c))}.xlsx`;
@@ -1717,7 +1719,14 @@ async function edcDropZip(){
   finally { btn.disabled = false; btn.textContent = old; }
 }
 $("edcDropZip").addEventListener("click", edcDropZip);
+$("edcRankStat").addEventListener("change", () => renderEdcRank());
 
+
+/* ---- status EDC dari kolom G (edc) file Merchant: 0 / "-" = Inactive, angka > 0 = Active */
+const edcN = i => (BOX.merchant && BOX.merchant.edc ? BOX.merchant.edc[i] || 0 : 0);
+const edcTag = (n, full) => n > 0
+  ? `<small class="et on" title="EDC Active: ${fN(n)} EDC terpasang">${full ? `EDC Active, ${fN(n)} EDC` : "EDC Active"}</small>`
+  : `<small class="et off" title="EDC Inactive: tidak ada EDC terpasang (kolom edc = -)">EDC Inactive</small>`;
 
 /* ================================================================== REASON SV DROP */
 const RS_KAT = ["Musiman / sepi pembeli","Beralih ke EDC/QRIS bank lain","EDC rusak atau bermasalah","Tutup sementara / renovasi","Tutup permanen","Pindah lokasi","Usaha menurun","Transaksi dialihkan ke MID/rekening lain","Lainnya"];
@@ -1746,7 +1755,7 @@ function merchantIdx(mid, nm){
 }
 function merchantInfo(i){
   const m = BOX.merchant, L = m.labels.length, a = mv(m,"sv",L-4,i)||0, b = mv(m,"sv",L-3,i)||0;
-  return {i, mid:String(m.mid[i]||""), nm:m.nm[i]||"–", on:(m.on&&m.on[i])||"", c:m.c[i], cb:bn(m.c[i]), a:m.a[i], seg:m.s[i], prev:a, cur:b, d:b-a, g:gr(b,a), week:`W${m.week} ${m.year}`};
+  return {i, edc:edcN(i), mid:String(m.mid[i]||""), nm:m.nm[i]||"–", on:(m.on&&m.on[i])||"", c:m.c[i], cb:bn(m.c[i]), a:m.a[i], seg:m.s[i], prev:a, cur:b, d:b-a, g:gr(b,a), week:`W${m.week} ${m.year}`};
 }
 const rsDate = v => { if (!v) return "–"; const d = new Date(v); return isNaN(d) ? v : `${d.getDate()} ${BLN[d.getMonth()]} ${d.getFullYear()}`; };
 const rsTime = v => { if (!v) return "–"; const d = new Date(v); return isNaN(d) ? v : d.toLocaleString("id-ID", {day:"numeric", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit"}); };
@@ -1769,6 +1778,7 @@ async function openMerchantMenu(mid, nm){
   try { await loadReasons(); } catch(e){}
   const rs = reasonsFor(info.mid, info.nm), last = rs[0];
   dlgOpen(info.nm, [info.mid && "MID "+info.mid, info.cb && `${info.cb} (${info.c})`].filter(Boolean).join(", "), `
+    ${info.i>=0 ? `<p class="md-edc">${edcTag(edcN(info.i), true)}</p>` : ""}
     <div class="md-sv">${info.i>=0 ? `<div><span>SV YTD ${esc(info.week)}</span><b>${fRp(info.cur)}</b></div><div><span>Tahun lalu</span><b>${fRp(info.prev)}</b></div><div><span>Selisih</span><b class="${info.d>=0?"good":"bad"}">${fRp(info.d)}</b></div><div><span>YoY</span><b>${growthTag(info.g)}</b></div>` : `<p class="note">Merchant tidak ditemukan di data minggu ini.</p>`}</div>
     ${last ? `<div class="md-last"><b>Reason terakhir</b> (${esc(rsDate(last.tgl_kontak))}, ${esc(last.created_by_nama||"–")}): ${last.kategori?`<span class="tag mid">${esc(last.kategori)}</span> `:""}${esc(last.alasan)}${rs.length>1?` <small class="muted">${rs.length} reason tersimpan</small>`:""}</div>` : ""}
     <div class="md-act">
@@ -1894,16 +1904,16 @@ async function renderReason(){
   $("cRsKat").querySelectorAll("[data-kat]").forEach(b => b.onclick = () => { $("rsKat").value = kat === b.dataset.kat ? "" : b.dataset.kat; renderReason(); });
 
   table($("tRsList"), {csv:"reason_sv_drop", sort:"tgl", page:15, rows:lat.map(x => ({key:x.r.mid ? "mid:"+x.r.mid : "nm:"+x.r.nama_merchant, tgl:x.r.tgl_kontak, nm:x.info ? x.info.nm : x.r.nama_merchant, mid:x.r.mid||"", cb:x.c ? bn(x.c) : "–",
-      d:x.info ? x.info.d : null, g:x.info ? x.info.g : null, kat:x.r.kategori||"–", al:x.r.alasan, cara:x.r.cara_kontak||"–", by:x.r.created_by_nama||"–", at:x.r.created_at, n:x.n})),
+      d:x.info ? x.info.d : null, g:x.info ? x.info.g : null, edc:x.info ? x.info.edc : null, kat:x.r.kategori||"–", al:x.r.alasan, cara:x.r.cara_kontak||"–", by:x.r.created_by_nama||"–", at:x.r.created_at, n:x.n})),
     rowKey:x => x.key, onRow:k => { const [t, ...v] = k.split(":"); const val = v.join(":"); openReasonFromKey(t === "mid" ? val : "", t === "nm" ? val : (lat.find(x => x.r.mid === val)||{r:{}}).r.nama_merchant); }, cols:[
     {k:"tgl",l:"Tgl kontak",f:rsDate}, {k:"nm",l:"Merchant",f:(v,x)=>`<span class="nm-cut" title="${esc(v)}${x.mid?" · MID "+esc(x.mid):""}">${esc(v)}</span>`}, {k:"cb",l:"Cabang"},
-    {k:"d",l:"SV turun",num:1,f:v=>v==null?"–":`<span class="${v>=0?"good":"bad"}">${fC(v)}</span>`}, {k:"g",l:"YoY",num:1,f:v=>growthTag(v)},
+    {k:"edc",l:"Status EDC",f:v=>v==null?"–":edcTag(v)}, {k:"d",l:"SV turun",num:1,f:v=>v==null?"–":`<span class="${v>=0?"good":"bad"}">${fC(v)}</span>`}, {k:"g",l:"YoY",num:1,f:v=>growthTag(v)},
     {k:"kat",l:"Kategori"}, {k:"al",l:"Alasan",f:v=>`<span class="addr" title="${esc(v)}">${esc(v)}</span>`}, {k:"cara",l:"Kontak"},
     {k:"by",l:"Diinput oleh"}, {k:"at",l:"Waktu input",f:rsTime}, {k:"n",l:"Riwayat",num:1,f:fN}]});
 
   table($("tRsTodo"), {csv:"top20_sv_drop_belum_reason", sort:"d", dir:1, page:15, rows:todo.map(x => ({...x, key:x.mid ? "mid:"+x.mid : "nm:"+x.nm})),
     rowKey:x => x.key, onRow:k => { const x = todo.find(t => (t.mid ? "mid:"+t.mid : "nm:"+t.nm) === k); if (x) openReasonForm(x); }, cols:[
-    {k:"rk",l:"Rank",num:1}, {k:"nm",l:"Merchant",f:(v,x)=>`<span class="nm-cut" title="${esc(v)}${x.mid?" · MID "+esc(x.mid):""}">${esc(v)}</span>`}, {k:"mid",l:"MID"}, {k:"cb",l:"Cabang"}, {k:"seg",l:"Segmen",f:v=>title(v||"–")},
+    {k:"rk",l:"Rank",num:1}, {k:"nm",l:"Merchant",f:(v,x)=>`<span class="nm-cut" title="${esc(v)}${x.mid?" · MID "+esc(x.mid):""}">${esc(v)}</span>`}, {k:"mid",l:"MID"}, {k:"edc",l:"Status EDC",f:v=>edcTag(v)}, {k:"cb",l:"Cabang"}, {k:"seg",l:"Segmen",f:v=>title(v||"–")},
     {k:"prev",l:"SV tahun lalu",num:1,f:fC}, {k:"cur",l:"SV tahun ini",num:1,f:fC}, {k:"d",l:"Turun",num:1,f:v=>`<span class="bad">${fC(v)}</span>`}, {k:"g",l:"YoY",num:1,f:v=>growthTag(v)}]});
 }
 async function openReasonFromKey(mid, nm){

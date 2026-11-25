@@ -447,3 +447,20 @@ b.mid,span.mid:not(.tag){color:var(--mid);font-weight:700}
 b.bad,span.bad:not(.tag){color:var(--bad);font-weight:700}
 .tag.good{background:var(--good-bg);color:var(--good)}.tag.mid{background:var(--mid-bg);color:var(--mid)}.tag.bad{background:var(--bad-bg);color:var(--bad)}
 small.muted{display:block;color:var(--muted);font-size:11.5px}
+/* ---- grup menu Weekly Report */
+.nav-group{display:flex;flex-direction:column;margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.08)}
+.nav-group[hidden]{display:none}
+.side-nav .nav-grp-btn{width:100%}
+.d-wk{background:#f472b6}
+.chev{margin-left:auto;width:8px;height:8px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(-45deg);transition:transform .15s;opacity:.7}
+.nav-group.open .chev{transform:rotate(45deg) translate(-2px,-2px)}
+.nav-sub{display:none;flex-direction:column;gap:2px;margin:2px 0 0 17px;padding-left:10px;border-left:1px solid rgba(255,255,255,.14)}
+.nav-group.open .nav-sub{display:flex}
+.side-nav .nav-sub button{font-size:13px;font-weight:500;padding:8px 10px;line-height:1.3}
+.side-nav .nav-sub button[hidden]{display:none}
+@media (prefers-reduced-motion:reduce){.chev{transition:none}}
+@media (max-width:900px){
+  .nav-group{flex-direction:row;align-items:center;margin:0;padding:0 6px 0 0;border:0;border-right:1px solid rgba(255,255,255,.12)}
+  .nav-sub{flex-direction:row;margin:0;padding:0;border:0}
+  .side-nav .nav-sub button{white-space:nowrap}
+}

@@ -1344,7 +1344,7 @@ function renderUsak(){
 
 const RENDER = {ringkasan:renderSummary, atm:renderATM, edc:renderEDC, lvm:renderLVM, cabang:renderCabang, merchant:renderMerchant, users:renderUsers, wpr:renderWPR, duta:renderDuta, usak:renderUsak};
 let TAB = "ringkasan";
-const TITLES = {ringkasan:"Overview", atm:"ATM & CRM", edc:"EDC Merchant", lvm:"Livin' Merchant", cabang:"Scorecard cabang", merchant:"Pencarian", users:"Kelola pengguna", wpr:"Weekly Performance Report", duta:"GMM Duta Transaksi", usak:"Dashboard USAK"};
+const TITLES = {ringkasan:"Overview", atm:"ATM & CRM", edc:"EDC Merchant", lvm:"Livin' Merchant", cabang:"Scorecard cabang", merchant:"Pencarian", users:"Kelola pengguna", wpr:"Weekly Performance Report", duta:"Dashboard GMM Duta Transaksi", usak:"Dashboard GMM USAK Livin' Merchant Fase 3"};
 const PARENT = {duta:"ringkasan", usak:"lvm"};        // halaman turunan: tidak punya menu sendiri
 function subTitle(){
   if (USER.lim) return `Cari merchant EDC & E-Commerce atau Livin' Merchant, lalu lihat performance lengkapnya`;
@@ -1358,13 +1358,11 @@ function subTitle(){
     merchant: USER.lim ? `Cari merchant EDC & E-Commerce atau Livin' Merchant, lalu lihat performance lengkapnya` : `Cari merchant EDC & E-Commerce, Livin' Merchant, atau mesin ATM, lalu lihat performance lengkapnya`,
     users:`Setujui pendaftaran, atur akses area, dan nonaktifkan akun`,
     duta: D.duta ? `Region XI Bali & Nusra, posisi ${D.duta.asof}${D.duta.since?`, dihitung sejak ${D.duta.since}`:""}` : "",
-    usak: D.usak ? `Akuisisi Livin' Merchant oleh pegawai, Fase 3${D.usak.period?`: ${D.usak.period}`:""}${D.usak.asof && !D.usak.period.endsWith(D.usak.asof)?`, posisi USAK ${D.usak.asof}`:""}` : "",
+    usak: D.usak ? `Akuisisi Livin' Merchant oleh pegawai${D.usak.period?`, ${D.usak.period}`:""}${D.usak.asof && !D.usak.period.endsWith(D.usak.asof)?`, posisi USAK ${D.usak.asof}`:""}` : "",
     wpr: D.wpr ? `Merchant EDC & E-Commerce, minggu ke-${D.wpr.weeks[0]} sampai ${D.wpr.weeks[D.wpr.weeks.length-1]} ${D.wpr.year} dan year to date. Sumber: ${D.wpr.file}` : ""}[TAB];
 }
 function renderTab(){
-  const hb = {lvm: D.usak ? `<button class="head-btn" data-go="usak">Dashboard USAK</button>` : "",
-              usak:`<button class="head-btn back" data-go="lvm" title="Kembali ke Livin' Merchant">‹ Livin' Merchant</button>`,
-              duta:`<button class="head-btn back" data-go="ringkasan" title="Kembali ke Overview">‹ Overview</button>`}[TAB] || "";
+  const hb = {lvm: D.usak ? `<button class="head-btn" data-go="usak">Dashboard USAK</button>` : ""}[TAB] || "";
   $("headBtn").innerHTML = hb; $("headBtn").querySelectorAll("[data-go]").forEach(b => b.onclick = () => goTab(b.dataset.go));
   $("pageTitle").textContent = TAB === "edc" ? `Merchant W${D.edc.week} ${D.edc.year}` : TAB === "wpr" && D.wpr ? `WPR W${D.wpr.weeks[D.wpr.weeks.length-1]} ${D.wpr.year}` : TITLES[TAB]; $("pageSub").textContent = subTitle();
   try { RENDER[TAB](); } catch(e){ console.error(e); }
@@ -1372,7 +1370,8 @@ function renderTab(){
 function goTab(t){
   if (USER.lim) t = "merchant";
   TAB = t;
-  document.querySelectorAll("#tabs button").forEach(x => x.classList.toggle("active", x.dataset.tab===(PARENT[t]||t)));
+  document.querySelectorAll("#tabs button[data-tab]").forEach(x => x.classList.toggle("active", x.dataset.tab===t));
+  if (t === "duta" || t === "usak") setWeekly(true);
   document.querySelectorAll(".tab").forEach(s => s.hidden = s.id !== "tab-"+t);
   window.scrollTo(0,0); renderTab();
 }
@@ -1397,12 +1396,14 @@ function start(){
     opts($("lvmKelas"), [...new Set(Object.values(KELAS))].sort());
     $("navEdc").innerHTML = `<i class="dot d-edc"></i>Merchant W${D.edc.week}`;
     $("navWpr").hidden = !D.wpr;
+    $("navDuta").hidden = !D.duta; $("navUsak").hidden = !D.usak;
     if (D.wpr) $("navWpr").innerHTML = `<i class="dot d-wpr"></i>WPR W${D.wpr.weeks[D.wpr.weeks.length-1]} ${D.wpr.year}`;
   }
   $("userLine").textContent = USER.nama;
   $("roleLine").textContent = [lim ? LIMITED_ROLES[USER.role] : USER.jabatan, USER.unit].filter(Boolean).join(", ");
   $("meFoto").outerHTML = avatarHtml(USER.foto, USER.nama, "sm").replace('class="avatar sm"', 'class="avatar sm" id="meFoto"');
   $("navUsers").hidden = USER.role !== "admin";
+  $("navWeekly").hidden = lim || (!D.duta && !D.usak);
   if (USER.role === "admin") loadUsers().catch(e => console.warn(e));
   else if (TAB === "users") TAB = "ringkasan";
   if (lim) { TAB = "merchant"; MS.sel = null; }
@@ -1411,6 +1412,11 @@ function start(){
   $("login").hidden = true; $("app").hidden = false;
   goTab(TAB);
 }
+function setWeekly(open){
+  $("navWeekly").classList.toggle("open", open);
+  $("navWeeklyBtn").setAttribute("aria-expanded", open ? "true" : "false");
+}
+$("navWeeklyBtn").addEventListener("click", () => setWeekly(!$("navWeekly").classList.contains("open")));
 $("tabs").addEventListener("click", e => { const b = e.target.closest("button[data-tab]"); if (b) goTab(b.dataset.tab); });
 ["atmJenis","atmGroup","atmMetric","edcSeg","edcLob","edcTipe","lvmKelas"].forEach(id => $(id).addEventListener("change", renderTab));
 $("lobArea").addEventListener("change", () => { $("lobCab").value = ""; renderEdcLob(); });

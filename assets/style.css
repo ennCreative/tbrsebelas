@@ -411,3 +411,39 @@ td.txt{max-width:280px;overflow:hidden;text-overflow:ellipsis}
 .tri td.num .up,.tri td.num .down{font-size:11.5px}
 .tri .tbl-tools .note{font-size:11.5px}
 .tri .tbl-tools .btn{padding:3px 8px;font-size:11.5px}
+/* jenis pengguna saat daftar */
+#suPeran{width:100%;padding:12px 14px;margin:6px 0 16px;border:1.5px solid var(--line);border-radius:10px;font-size:15px;background:#fafbfc;color:var(--text)}
+#suPeran:focus{outline:none;border-color:var(--data);background:#fff}
+.us-tbl select{max-width:170px}
+.us-tbl td.us-act{display:table-cell;white-space:normal;min-width:84px}
+.us-tbl td.us-act .btn-sm{display:block;width:100%;margin:3px 0}
+/* ---- halaman turunan: Duta Transaksi & USAK */
+.ttl-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.head-btn{font:600 13px/1 inherit;font-family:inherit;padding:9px 14px;border-radius:999px;border:1.5px solid var(--data,#2a78d6);background:var(--data,#2a78d6);color:#fff;cursor:pointer;white-space:nowrap}
+.head-btn:hover{filter:brightness(1.08)}
+.head-btn:focus-visible{outline:3px solid #9ec5f4;outline-offset:2px}
+.head-btn.back{background:#fff;color:var(--data,#2a78d6)}
+.asof .asof-btn{margin-left:6px;padding:5px 11px;font-size:12px}
+.d-duta{background:#8a5cf6}
+.chart.tall{height:420px}
+.g4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.g1{grid-template-columns:1fr}
+@media (max-width:1200px){.g4{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:700px){.g4{grid-template-columns:1fr}}
+.bot h4{margin:0 0 8px;font-size:14px}
+.bot ol{margin:0;padding:0;list-style:none;counter-reset:b}
+.bot li{counter-increment:b;display:grid;grid-template-columns:22px 1fr auto;gap:2px 8px;padding:8px 0;border-top:1px solid var(--line,#ecebe7);font-size:13px}
+.bot li::before{content:counter(b);color:#8b8a86;font-weight:600}
+.bot li small{grid-column:2/4;color:#8b8a86;font-size:11.5px}
+.bot li b{font-variant-numeric:tabular-nums}
+.g1 .bot ol{columns:2;column-gap:28px}
+.g1 .bot li{break-inside:avoid}
+.notes h3{margin:0 0 8px;font-size:15px}
+.notes ol{margin:0 0 8px;padding-left:20px;font-size:13px;line-height:1.55;color:var(--text2,#52514e)}
+.tag{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11.5px;font-weight:600;white-space:nowrap}
+.tag.good{background:#e3f6ee}.tag.mid{background:#fdf3dc}.tag.bad{background:#fde8e1}
+b.good,span.good:not(.tag){color:var(--good);font-weight:700}
+b.mid,span.mid:not(.tag){color:var(--mid);font-weight:700}
+b.bad,span.bad:not(.tag){color:var(--bad);font-weight:700}
+.tag.good{background:var(--good-bg);color:var(--good)}.tag.mid{background:var(--mid-bg);color:var(--mid)}.tag.bad{background:var(--bad-bg);color:var(--bad)}
+small.muted{display:block;color:var(--muted);font-size:11.5px}

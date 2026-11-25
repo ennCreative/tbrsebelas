@@ -48,13 +48,14 @@ async function openBox(dk, box){
   const gz = await crypto.subtle.decrypt({name:"AES-GCM", iv:b64(box.iv)}, dk, b64(box.ct));
   return JSON.parse(await new Response(new Blob([gz]).stream().pipeThrough(new DecompressionStream("gzip"))).text());
 }
-let DK = null;
+let DK = null, DK2 = null;                 // DK: dashboard lengkap, DK2: data Pencarian merchant
+const LIMITED_ROLES = {yokke:"Marketing Yokke", outbranch:"Outbranch"};   // peran khusus: hanya menu Pencarian merchant
 const BOX = {}, BOX_P = {};
 function loadBox(name){            // file data terenkripsi tambahan, dimuat saat dibutuhkan
   if (BOX[name]) return Promise.resolve(BOX[name]);
   if (!BOX_P[name]) BOX_P[name] = fetch(`data/${name}.enc.json?t=`+Date.now(),{cache:"no-store"})
     .then(r => { if (!r.ok) throw new Error(`file data/${name}.enc.json tidak ditemukan`); return r.json(); })
-    .then(box => openBox(DK, box))
+    .then(box => openBox(name === "wpr" ? DK : DK2, box))
     .then(m => { BOX[name] = m; return m; })
     .catch(e => { delete BOX_P[name]; throw e; });
   return BOX_P[name];
@@ -101,19 +102,24 @@ async function loadProfile(){
 async function enterDashboard(p){
   if (p.status === "menunggu") throw new AuthErr("Akun Anda masih menunggu persetujuan admin.");
   if (p.status !== "aktif") throw new AuthErr("Akun Anda sedang dinonaktifkan. Hubungi admin.");
-  const keys = await sb("/rest/v1/app_keys?id=eq.1&select=k");
-  if (!keys || !keys.length) throw new AuthErr("Kunci data belum dipasang di server. Admin perlu menjalankan supabase_kunci.sql.");
-  let dk;
-  try {
-    const raw = b64(String(keys[0].k).replace(/\s+/g, ""));
-    if (raw.length !== 32) throw 0;
-    dk = await crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["decrypt"]);
-  } catch(e){ throw new AuthErr("Kunci data di server tidak valid. Admin perlu menjalankan ulang isi file _rahasia\\supabase_kunci.sql (salin langsung dari file, jangan diketik ulang)."); }
-  const enc = await fetch("data/data.enc.json?t="+Date.now(), {cache:"no-store"}).then(r => { if (!r.ok) throw new AuthErr("File data dashboard tidak ditemukan."); return r.json(); });
-  try { D = await openBox(dk, enc); }
+  const lim = !!LIMITED_ROLES[p.role];
+  const keys = await sb("/rest/v1/app_keys?select=id,k") || [];
+  const k1 = keys.find(x => x.id === 1), k2 = keys.find(x => x.id === 2);
+  if (!k2 || (!lim && !k1)) throw new AuthErr("Kunci data belum lengkap di server. Admin perlu menjalankan isi file _rahasia\\supabase_kunci.sql dan supabase_peran.sql di Supabase.");
+  const imp = async k => {
+    try {
+      const raw = b64(String(k).replace(/\s+/g, ""));
+      if (raw.length !== 32) throw 0;
+      return await crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["decrypt"]);
+    } catch(e){ throw new AuthErr("Kunci data di server tidak valid. Admin perlu menjalankan ulang isi file _rahasia\\supabase_kunci.sql (salin langsung dari file, jangan diketik ulang)."); }
+  };
+  const dk2 = await imp(k2.k), dk = lim ? null : await imp(k1.k);
+  const file = lim ? "cari" : "data";
+  const enc = await fetch(`data/${file}.enc.json?t=`+Date.now(), {cache:"no-store"}).then(r => { if (!r.ok) throw new AuthErr("File data dashboard tidak ditemukan."); return r.json(); });
+  try { D = await openBox(lim ? dk2 : dk, enc); }
   catch(e){ throw new AuthErr("Data dashboard tidak cocok dengan kunci di server. Pastikan file data dan supabase_kunci.sql berasal dari update yang sama."); }
-  USER = {nama:p.nama, akses:p.akses || "REGION", role:p.role, jabatan:p.jabatan, unit:p.unit_kerja, foto:p.foto, username:p.username};
-  DK = dk; for (const k in BOX) delete BOX[k]; for (const k in BOX_P) delete BOX_P[k];
+  USER = {nama:p.nama, akses:p.akses || "REGION", role:p.role, lim, jabatan:p.jabatan, unit:p.unit_kerja, foto:p.foto, username:p.username};
+  DK = dk; DK2 = dk2; for (const k in BOX) delete BOX[k]; for (const k in BOX_P) delete BOX_P[k];
   VERSION = await fetchVersion();
   start();
 }
@@ -179,7 +185,7 @@ $("signupForm").addEventListener("submit", async e => {
   busy(true);
   try {
     const res = await sb("/auth/v1/signup", {method:"POST", auth:false,
-      body:{email:toEmail(u), password:p, data:{username:u, nama:v("suNama"), jabatan:v("suJabatan"), unit_kerja:v("suUnit")}}});
+      body:{email:toEmail(u), password:p, data:{username:u, nama:v("suNama"), jabatan:v("suJabatan"), unit_kerja:v("suUnit"), peran:$("suPeran").value}}});
     if (SU_FOTO && res && res.access_token){
       setSession(res);
       try { await sb(`/rest/v1/profiles?id=eq.${res.user.id}`, {method:"PATCH", body:{foto:SU_FOTO}, headers:{Prefer:"return=minimal"}}); } catch(err){ console.warn(err); }
@@ -256,7 +262,7 @@ function table(el, {cols, rows, page=25, search=true, sort, dir=-1, foot, csv, f
     const pages = Math.max(1, Math.ceil(r.length/page)); st.p = Math.min(st.p, pages-1);
     const vis = r.slice(st.p*page, st.p*page+page);
     const cell = (c,x,i) => { const v = c.v ? c.v(x) : x[c.k];
-      if (c.num || c.h || c.f) return `<td class="${c.num?"num":""}">${c.h ? c.h(x,v,i) : c.f ? c.f(v) : esc(v)}</td>`;
+      if (c.num || c.h || c.f) return `<td class="${c.num?"num":""}">${c.h ? c.h(x,v,i) : c.f ? c.f(v,x) : esc(v)}</td>`;
       const t = String(v ?? ""); return `<td class="txt"${t.length > 34 ? ` title="${esc(t)}"` : ""}>${esc(t)}</td>`; };
     if (needQuery && !st.q){
       el.innerHTML = `<div class="tbl-tools"><input type="search" placeholder="Cari…" value=""><span></span></div><div class="empty-q">${needQuery}</div>`;
@@ -591,7 +597,8 @@ const cv = (o,i) => o.k[o.v[i]];                        // nilai kategori (data 
 const gtag = v => v==null ? "–" : `<span class="${v>=0?"up":"down"}">${v>=0?"▲":"▼"} ${fP(Math.abs(v))}</span>`;
 const fieldHtml = (k,v) => `<div><dt>${k}</dt><dd>${v}</dd></div>`;
 function msModes(){
-  $("msModes").innerHTML = Object.entries(MS_MODES).map(([k,c]) => `<button data-m="${k}" class="${k===MS.mode?"on":""}">${c.label}</button>`).join("");
+  if (USER.lim && MS.mode === "atm") MS.mode = "edc";
+  $("msModes").innerHTML = Object.entries(MS_MODES).filter(([k]) => !(USER.lim && k === "atm")).map(([k,c]) => `<button data-m="${k}" class="${k===MS.mode?"on":""}">${c.label}</button>`).join("");
   $("msModes").querySelectorAll("button").forEach(b => b.onclick = () => {
     if (MS.mode === b.dataset.m) return;
     MS.mode = b.dataset.m; MS.sel = null; MS.page = 0; $("msQ").value = "";
@@ -909,6 +916,7 @@ async function renderUsers(){
   try { await loadUsers(); } catch(e){ $("usList").innerHTML = `<p class="note">Gagal memuat: ${esc(e.message)}</p>`; return; }
   drawUsers();
 }
+const ROLE_OPTS = [["user","Pengguna"],["yokke","Marketing Yokke"],["outbranch","Outbranch"],["admin","Admin"]];
 function drawUsers(){
   const st = $("usStatus").value, rows = US_ROWS.filter(u => !st || u.status === st);
   const opt = (vals, cur) => vals.map(([v,l]) => `<option value="${v}" ${v===cur?"selected":""}>${l}</option>`).join("");
@@ -921,7 +929,7 @@ function drawUsers(){
       <td>${new Date(u.created_at).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"})}</td>
       <td><select data-f="status" class="st-${u.status}">${opt([["menunggu","Menunggu"],["aktif","Aktif"],["nonaktif","Nonaktif"]], u.status)}</select></td>
       <td><select data-f="akses">${opt(AKS, u.akses)}</select></td>
-      <td><select data-f="role">${opt([["user","Pengguna"],["admin","Admin"]], u.role)}</select></td>
+      <td><select data-f="role">${opt(ROLE_OPTS, u.role)}</select></td>
       <td class="us-act"><button class="btn-sm pri" data-act="save">Simpan</button><button class="btn-sm danger" data-act="del" title="Hapus akun">Hapus</button></td>
     </tr>`).join("")}</tbody></table></div>`;
   $("usList").querySelectorAll("tr[data-id]").forEach(tr => {
@@ -988,7 +996,9 @@ function renderSummary(){
     <span class="asof-i"><i class="dot d-atm"></i>ATM &amp; CRM <b>${atmEnd.getDate()} ${BLN[A.last]} ${A.year}</b></span>
     <span class="asof-i"><i class="dot d-edc"></i>EDC &amp; E-Commerce <b>Minggu ke-${E.week} ${E.year}</b></span>
     <span class="asof-i"><i class="dot d-lvm"></i>Livin' Merchant <b>${d} ${BLN[m-1]} ${y}</b></span>
+    ${D.duta?`<span class="asof-i"><i class="dot d-duta"></i>Duta Transaksi <b>${esc(D.duta.asof)}</b> <button class="head-btn asof-btn" id="goDuta">Buka Duta Transaksi</button></span>`:""}
     <span class="asof-i upd">Diperbarui ${esc(D.generated)}</span>`;
+  if ($("goDuta")) $("goDuta").onclick = () => goTab("duta");
 
   // ---- Financial Highlight: indikator per produk, nilai di atas & persen di bawah
   const cols = [{a:"", t:"Region XI"}, ...D.areas.map(a => ({a, t:title(a).replace("Area ","")}))];
@@ -1211,10 +1221,133 @@ async function renderOvDrops(){
 }
 
 /* ================================================================== app */
-const RENDER = {ringkasan:renderSummary, atm:renderATM, edc:renderEDC, lvm:renderLVM, cabang:renderCabang, merchant:renderMerchant, users:renderUsers, wpr:renderWPR};
+
+/* ================================================================== DUTA TRANSAKSI (sub-page Overview) */
+const p90Cls = p => p==null ? "" : p>=.9 ? "good" : p>=.8 ? "mid" : "bad";
+const p90Html = p => `<span class="${p90Cls(p)}">${fP(p)}</span>`;
+const fJt = v => fRp((v||0)*1e6);
+function renderDuta(){
+  const T = D.duta;
+  if (!T){ $("dtKpis").innerHTML = `<p class="note">File Duta Transaksi belum ada di folder data.</p>`; return; }
+  // unit: [area, unit, peg, part, on, off, pctOn, svOn, svOff, p90, pctP90, poin, rank]
+  const units = T.units.filter(u => inArea(u[0]));
+  const t = AREA ? {peg:sum(units,u=>u[2]), part:sum(units,u=>u[3]), on:sum(units,u=>u[4]), off:sum(units,u=>u[5]), svOn:sum(units,u=>u[7]), svOff:sum(units,u=>u[8]), p90:sum(units,u=>u[9])}
+                 : {peg:T.tot[0], part:T.tot[1], on:T.tot[2], off:T.tot[3], svOn:T.tot[4], svOff:T.tot[5], p90:T.tot[6]};
+  const trx = t.on + t.off;
+  $("dtKpis").innerHTML =
+    kpi("Total pegawai", fN(t.peg), `${fN(t.part)} berpartisipasi (${fP(t.peg?t.part/t.peg:0)})`, "", t.peg?t.part/t.peg:null) +
+    kpi("Transaksi On Us", fN(t.on), `${fP(trx?t.on/trx:0)} dari total frekuensi<br>SV ${fJt(t.svOn)}`) +
+    kpi("Transaksi Off Us", fN(t.off), `${fP(trx?t.off/trx:0)} dari total frekuensi<br>SV ${fJt(t.svOff)}`) +
+    kpi("Pegawai On Us min 90%", fN(t.p90), `${p90Html(t.peg?t.p90/t.peg:null)} dari total pegawai<br>GAP ${fN(t.p90 - t.peg)} pegawai`, "", t.peg?t.p90/t.peg:null);
+
+  // grafik per unit bisnis (area + unit region)
+  const ar = T.areas.filter(a => inArea(a[0])).map(a => ({n:a[1], p:a[2]?a[8]/a[2]:0})).sort((x,y)=>y.p-x.p);
+  chart("cDtArea", {labels:ar.map(a=>a.n), fmt:fP, values:fP, horizontal:true, series:[
+    S_("% pegawai On Us ≥90%", ar.map(a=>a.p), ar.map(a=>a.p>=.9?C.s3:a.p>=.8?C.s4:C.s2))]});
+  drawPie($("cDtPie"), {fmt:fN, center:["transaksi", fN(trx)], items:[{label:"On Us", value:t.on, color:C.s1, note:fP(trx?t.on/trx:0)}, {label:"Off Us", value:t.off, color:C.s2, note:fP(trx?t.off/trx:0)}]});
+
+  // bottom 5 per area
+  const areas = AREA ? [AREA] : D.areas;
+  $("dtBotT").textContent = AREA ? "Bottom 10 unit kerja pegawai On Us 90%" : "Bottom 5 unit kerja pegawai On Us 90%";
+  $("dtBottom").className = "grid bot-grid " + (AREA ? "g1" : "g4");
+  $("dtBottom").innerHTML = areas.map(a => {
+    const list = T.units.filter(u => u[0]===a && u[2]>0).sort((x,y) => x[10]-y[10] || y[2]-x[2]).slice(0, AREA?10:5);
+    return `<div class="bot"><h4>${esc(title(a))}</h4><ol>${list.map(u => `<li><span>${esc(u[1])}</span><b class="${p90Cls(u[10])}">${fP(u[10])}</b><small>${u[9]} dari ${u[2]} pegawai</small></li>`).join("") || "<li>Tidak ada data</li>"}</ol></div>`;
+  }).join("");
+
+  table($("tDtUnit"), {csv:"duta_transaksi_unit", sort:"pp", dir:1, page:15, rows:units.map(u => ({a:u[0], n:u[1], peg:u[2], part:u[3], on:u[4], off:u[5], po:u[6], sv:u[7], p90:u[9], pp:u[10], poin:u[11], rk:u[12]||null})), cols:[
+    {k:"a",l:"Area",f:a=>a==="REGION"?"Region":title(a).replace("Area ","")}, {k:"n",l:"Unit kerja"}, {k:"peg",l:"Pegawai",num:1,f:fN}, {k:"part",l:"Partisipasi",num:1,f:fN},
+    {k:"on",l:"Frek On Us",num:1,f:fN}, {k:"off",l:"Frek Off Us",num:1,f:fN}, {k:"po",l:"% On Us",num:1,f:p90Html}, {k:"sv",l:"SV On Us",num:1,f:fJt},
+    {k:"p90",l:"Pegawai ≥90%",num:1,f:fN}, {k:"pp",l:"% pegawai ≥90%",num:1,f:p90Html}, {k:"poin",l:"Poin program",num:1,f:fN}, {k:"rk",l:"Rank di area",num:1,f:v=>v?fN(v):"–"}],
+    foot: r => { const s_ = k => sum(r,x=>x[k]); return ["","Total",fN(s_("peg")),fN(s_("part")),fN(s_("on")),fN(s_("off")),p90Html(s_("on")+s_("off")?s_("on")/(s_("on")+s_("off")):null),fJt(s_("sv")),fN(s_("p90")),p90Html(s_("peg")?s_("p90")/s_("peg"):null),fN(s_("poin")),""]; }});
+
+  // pegawai: [nama, area, unit, part, on, off, pctOn, poin, need, p90]
+  const st = $("dtStat").value;
+  const peg = T.peg.filter(x => inArea(x[1]) && (st==="" || (st==="np" ? !x[3] : String(x[9])===st)));
+  table($("tDtPeg"), {csv:"duta_transaksi_pegawai", sort:"need", page:15, rows:peg.map(x => ({nm:x[0], a:x[1], u:x[2], on:x[4], off:x[5], po:x[6], poin:x[7], need:x[8], ok:x[9], part:x[3]})), cols:[
+    {k:"nm",l:"Nama pegawai"}, {k:"u",l:"Unit kerja"}, {k:"a",l:"Area",f:a=>a==="REGION"?"Region":title(a).replace("Area ","")},
+    {k:"on",l:"Frek On Us",num:1,f:fN}, {k:"off",l:"Frek Off Us",num:1,f:fN}, {k:"po",l:"% On Us",num:1,f:(v,x)=>x.part?p90Html(v):"–"},
+    {k:"need",l:"Kebutuhan tambahan",num:1,f:v=>v?`<b class="bad">${fN(v)}</b>`:"0"}, {k:"poin",l:"Poin program",num:1,f:fN},
+    {k:"ok",l:"Status",f:(v,x)=>!x.part?`<span class="tag bad">Belum partisipasi</span>`:v?`<span class="tag good">Sudah 90%</span>`:`<span class="tag mid">Belum 90%</span>`}]});
+
+  $("dtNotes").innerHTML = `<h3>Catatan</h3><ol>${T.notes.map(n=>`<li>${esc(n)}</li>`).join("")}</ol><p class="note">Sumber: ${esc(T.file)}</p>`;
+}
+
+/* ================================================================== USAK (sub-page Livin' Merchant) */
+const usCls = p => p==null ? "" : p>=.7 ? "good" : p>=.56 ? "mid" : "bad";
+const usHtml = p => `<span class="${usCls(p)}">${fP(p)}</span>`;
+const tgt70 = rows => { const a = {}; for (const r of rows) a[r.a] = (a[r.a]||0) + r.n; return sum(Object.values(a), v => Math.ceil(v*.7 - 1e-9)); };
+function renderUsak(){
+  const U = D.usak;
+  if (!U){ $("usKpis").innerHTML = `<p class="note">File Dashboard USAK belum ada di folder data.</p>`; return; }
+  // cab: [kode, nama, kelas, area, n[3], u[3], sv, fr, tgt]
+  const cabs = U.cab.filter(c => inArea(c[3]));
+  const sel = $("usCab"), cur = sel.value;
+  sel.innerHTML = `<option value="">Semua unit${AREA?` ${title(AREA)}`:" Region XI"}</option>` + [...cabs].sort((x,y)=>x[1].localeCompare(y[1])).map(c => `<option value="${esc(c[0])}">${esc(c[1])}${/^\d+$/.test(c[0])?" ("+c[0]+")":""}</option>`).join("");
+  sel.value = cabs.some(c => c[0]===cur) ? cur : "";
+  const cab = sel.value, cs = cabs.filter(c => !cab || c[0]===cab);
+  const n = sum(cs, c => c[4][0]+c[4][1]+c[4][2]), u = sum(cs, c => c[5][0]+c[5][1]+c[5][2]);
+  // target 70% dihitung per area (sama dengan file sumber), atau per unit saat satu unit dipilih
+  const byA = {}; for (const c of cs) byA[c[3]] = (byA[c[3]]||0) + c[4][0]+c[4][1]+c[4][2];
+  const tgt = cab ? cs[0][8] : sum(Object.values(byA), v => Math.ceil(v*.7 - 1e-9));
+  const ms = U.m.filter(m => cs.some(c => c[0]===m[3]));
+  const pegs = new Set(ms.map(m => m[2]));
+  $("usKpis").innerHTML =
+    kpi("Merchant diakuisisi (UREG)", fN(n), `oleh ${fN(pegs.size)} pegawai`) +
+    kpi("Sudah USAK", fN(u), `${usHtml(n?u/n:null)} dari UREG (target 70%)`, "", n?u/n:null) +
+    kpi("Belum USAK", fN(n-u), `${fP(n?(n-u)/n:0)} dari UREG`) +
+    kpi("Target realisasi 70%", fN(tgt), `GAP <b class="${u>=tgt?"good":"bad"}">${fN(u-tgt)}</b> merchant`, "", tgt?u/tgt:null) +
+    kpi("Sales volume", fRp(sum(cs,c=>c[6])), `Frekuensi ${fN(sum(cs,c=>c[7]))} transaksi`);
+
+  // grafik per area (atau per unit di area terpilih)
+  const grp = {};
+  const key = AREA ? (c => c[1]) : (c => c[3]);
+  for (const c of cs){ const g = grp[key(c)] || (grp[key(c)] = {n:0,u:0,t:0}); const k = c[4][0]+c[4][1]+c[4][2]; g.n += k; g.u += c[5][0]+c[5][1]+c[5][2]; g.t += AREA ? c[8] : 0; }
+  if (!AREA) for (const a in grp) grp[a].t = Math.ceil(grp[a].n*.7 - 1e-9);
+  let gl = Object.keys(grp);
+  if (AREA) gl = gl.sort((x,y)=>grp[y].n-grp[x].n).slice(0,12);
+  else gl.sort((x,y) => (D.areas.indexOf(x)+1||99) - (D.areas.indexOf(y)+1||99));
+  $("usChT").textContent = AREA ? `USAK per unit kerja, 12 UREG terbanyak ${title(AREA)}` : "USAK per area";
+  const lbl = g => AREA ? g : g==="REGION" ? "Region" : title(g).replace("Area ","");
+  chart("cUsArea", {labels:gl.map(lbl), fmt:fN, series:[S_("UREG", gl.map(g=>grp[g].n), C.prev), S_("USAK", gl.map(g=>grp[g].u), C.s3), S_("Target 70%", gl.map(g=>grp[g].t), C.s2)]});
+  const pn = [0,1,2].map(i => sum(cs,c=>c[4][i])), pu = [0,1,2].map(i => sum(cs,c=>c[5][i]));
+  chart("cUsPrio", {labels:["Prio 1","Prio 2","Prio 3"], fmt:fN, series:[S_("UREG", pn, C.prev), S_("USAK", pu, C.s3)]});
+
+  const unitRow = c => { const k = c[4][0]+c[4][1]+c[4][2], v = c[5][0]+c[5][1]+c[5][2];
+    return {kd:c[0], nm:c[1], kl:c[2]||"–", a:c[3], n:k, u:v, b:k-v, p:k?v/k:null, p1:c[4][0], p2:c[4][1], p3:c[4][2], t:c[8], gap:v-c[8], sv:c[6]}; };
+  table($("tUsCab"), {csv:"usak_unit_kerja", sort:"gap", dir:1, page:15, rows:cabs.map(unitRow), rowKey:x=>x.kd, onRow:k => { $("usCab").value = k; renderUsak(); $("usKpis").scrollIntoView({behavior:"smooth", block:"start"}); }, cols:[
+    {k:"a",l:"Area",f:a=>a==="REGION"?"Region":title(a).replace("Area ","")}, {k:"kl",l:"Kelas"}, {k:"kd",l:"Kode",f:v=>/^\d+$/.test(v)?v:"–"}, {k:"nm",l:"Unit kerja"},
+    {k:"n",l:"UREG",num:1,f:fN}, {k:"u",l:"USAK",num:1,f:fN}, {k:"b",l:"Belum USAK",num:1,f:fN}, {k:"p",l:"% USAK",num:1,f:usHtml},
+    {k:"p1",l:"Prio 1",num:1,f:fN}, {k:"p2",l:"Prio 2",num:1,f:fN}, {k:"p3",l:"Prio 3",num:1,f:fN},
+    {k:"t",l:"Target 70%",num:1,f:fN}, {k:"gap",l:"GAP",num:1,f:v=>`<b class="${v>=0?"good":"bad"}">${fN(v)}</b>`}, {k:"sv",l:"Sales volume",num:1,f:fC}],
+    foot: r => { const s_ = k => sum(r,x=>x[k]), t = tgt70(r); return ["","","","Total",fN(s_("n")),fN(s_("u")),fN(s_("b")),usHtml(s_("n")?s_("u")/s_("n"):null),fN(s_("p1")),fN(s_("p2")),fN(s_("p3")),fN(t),`<b class="${s_("u")>=t?"good":"bad"}">${fN(s_("u")-t)}</b>`,fC(s_("sv"))]; }});
+
+  // peg: [nama, unit, area, tipe, n, usak, sv, fr, kode]
+  const pg = U.peg.filter(p => inArea(p[2]) && (!cab || p[8]===cab));
+  table($("tUsPeg"), {csv:"usak_pegawai", sort:"u", page:15, rows:pg.map(p => ({nm:p[0], un:p[1], ty:p[3], n:p[4], u:p[5], p:p[4]?p[5]/p[4]:null, sv:p[6], fr:p[7]})), cols:[
+    {k:"nm",l:"Nama pegawai"}, {k:"un",l:"Unit kerja"}, {k:"ty",l:"Tipe",f:v=>v?title(v).replace("Tad","TAD"):"–"},
+    {k:"n",l:"UREG",num:1,f:fN}, {k:"u",l:"USAK",num:1,f:fN}, {k:"p",l:"% USAK",num:1,f:usHtml}, {k:"fr",l:"Frekuensi",num:1,f:fN}, {k:"sv",l:"Sales volume",num:1,f:fC}]});
+
+  // m: [merchant, mid, pegIdx, kode, usak, prio, frek, sv, kurangFrek, kurangSv, milestone, alamat]
+  const pr = $("usPrio").value;
+  const bu = ms.filter(m => !m[4] && (!pr || String(m[5])===pr));
+  const unitNm = Object.fromEntries(U.cab.map(c => [c[0], c[1]]));
+  table($("tUsMer"), {csv:"merchant_belum_usak", sort:"dist", dir:1, page:15, rows:bu.map(m => ({nm:m[0], mid:m[1], pg:U.peg[m[2]][0], un:unitNm[m[3]]||m[3], pr:m[5], fr:m[6], sv:m[7], kf:m[8], ks:m[9],
+      dist:(m[8]>0?1:0)+(m[9]>0?1:0)+m[8]/100+m[9]/1e7, al:m[11]})),
+    rowKey:x=>x.mid ? "mid:"+x.mid : "nm:"+x.nm, onRow:k => openInSearch("lvm", k.slice(0,k.indexOf(":")), k.slice(k.indexOf(":")+1)), cols:[
+    {k:"nm",l:"Merchant",f:(v,x)=>`<span class="nm-cut" title="${esc(v)}${x.mid?" · MID "+x.mid:""}">${esc(v)}</span>`}, {k:"pg",l:"Pegawai (unit kerja)",f:(v,x)=>`${esc(v)} <small class="muted">${esc(x.un)}</small>`}, {k:"pr",l:"Prio",f:v=>"Prio "+v},
+    {k:"fr",l:"Frekuensi",num:1,f:fN}, {k:"sv",l:"Sales volume",num:1,f:fRp},
+    {k:"kf",l:"Kurang frek",num:1,f:v=>v?`<b class="bad">${fN(v)}</b>`:`<span class="good">✓</span>`}, {k:"ks",l:"Kurang SV",num:1,f:v=>v?`<b class="bad">${fRp(v)}</b>`:`<span class="good">✓</span>`}]});
+
+  $("usNotes").innerHTML = `<h3>Keterangan</h3><ol>${U.gates.map(g=>`<li>${esc(g)}</li>`).join("")}<li>Target realisasi = 70% dari jumlah merchant UREG; GAP negatif berarti USAK masih di bawah target.</li></ol><p class="note">Sumber: ${esc(U.file)}</p>`;
+}
+
+const RENDER = {ringkasan:renderSummary, atm:renderATM, edc:renderEDC, lvm:renderLVM, cabang:renderCabang, merchant:renderMerchant, users:renderUsers, wpr:renderWPR, duta:renderDuta, usak:renderUsak};
 let TAB = "ringkasan";
-const TITLES = {ringkasan:"Overview", atm:"ATM & CRM", edc:"EDC Merchant", lvm:"Livin' Merchant", cabang:"Scorecard cabang", merchant:"Pencarian", users:"Kelola pengguna", wpr:"Weekly Performance Report"};
+const TITLES = {ringkasan:"Overview", atm:"ATM & CRM", edc:"EDC Merchant", lvm:"Livin' Merchant", cabang:"Scorecard cabang", merchant:"Pencarian", users:"Kelola pengguna", wpr:"Weekly Performance Report", duta:"GMM Duta Transaksi", usak:"Dashboard USAK"};
+const PARENT = {duta:"ringkasan", usak:"lvm"};        // halaman turunan: tidak punya menu sendiri
 function subTitle(){
+  if (USER.lim) return `Cari merchant EDC & E-Commerce atau Livin' Merchant, lalu lihat performance lengkapnya`;
   const {y,m,d} = lvmDate();
   return {
     ringkasan:`Kinerja Transaction Banking Retail Region XI: ATM & CRM, EDC & E-Commerce, dan Livin' Merchant`,
@@ -1222,17 +1355,24 @@ function subTitle(){
     edc:`Year to date minggu ${D.edc.week} ${D.edc.year}, dibanding minggu yang sama ${D.edc.year-1}`,
     lvm:`Data sampai ${d} ${BLN[m-1]} ${y}`,
     cabang:`ATM ${BLN[D.atm.last]}, EDC minggu ${D.edc.week}, Livin' Merchant ${d} ${BLN[m-1]} ${y}`,
-    merchant:`Cari merchant EDC & E-Commerce, Livin' Merchant, atau mesin ATM, lalu lihat performance lengkapnya`,
+    merchant: USER.lim ? `Cari merchant EDC & E-Commerce atau Livin' Merchant, lalu lihat performance lengkapnya` : `Cari merchant EDC & E-Commerce, Livin' Merchant, atau mesin ATM, lalu lihat performance lengkapnya`,
     users:`Setujui pendaftaran, atur akses area, dan nonaktifkan akun`,
+    duta: D.duta ? `Region XI Bali & Nusra, posisi ${D.duta.asof}${D.duta.since?`, dihitung sejak ${D.duta.since}`:""}` : "",
+    usak: D.usak ? `Akuisisi Livin' Merchant oleh pegawai, Fase 3${D.usak.period?`: ${D.usak.period}`:""}${D.usak.asof && !D.usak.period.endsWith(D.usak.asof)?`, posisi USAK ${D.usak.asof}`:""}` : "",
     wpr: D.wpr ? `Merchant EDC & E-Commerce, minggu ke-${D.wpr.weeks[0]} sampai ${D.wpr.weeks[D.wpr.weeks.length-1]} ${D.wpr.year} dan year to date. Sumber: ${D.wpr.file}` : ""}[TAB];
 }
 function renderTab(){
+  const hb = {lvm: D.usak ? `<button class="head-btn" data-go="usak">Dashboard USAK</button>` : "",
+              usak:`<button class="head-btn back" data-go="lvm" title="Kembali ke Livin' Merchant">‹ Livin' Merchant</button>`,
+              duta:`<button class="head-btn back" data-go="ringkasan" title="Kembali ke Overview">‹ Overview</button>`}[TAB] || "";
+  $("headBtn").innerHTML = hb; $("headBtn").querySelectorAll("[data-go]").forEach(b => b.onclick = () => goTab(b.dataset.go));
   $("pageTitle").textContent = TAB === "edc" ? `Merchant W${D.edc.week} ${D.edc.year}` : TAB === "wpr" && D.wpr ? `WPR W${D.wpr.weeks[D.wpr.weeks.length-1]} ${D.wpr.year}` : TITLES[TAB]; $("pageSub").textContent = subTitle();
   try { RENDER[TAB](); } catch(e){ console.error(e); }
 }
 function goTab(t){
+  if (USER.lim) t = "merchant";
   TAB = t;
-  document.querySelectorAll("#tabs button").forEach(x => x.classList.toggle("active", x.dataset.tab===t));
+  document.querySelectorAll("#tabs button").forEach(x => x.classList.toggle("active", x.dataset.tab===(PARENT[t]||t)));
   document.querySelectorAll(".tab").forEach(s => s.hidden = s.id !== "tab-"+t);
   window.scrollTo(0,0); renderTab();
 }
@@ -1242,35 +1382,41 @@ function renderPills(scope){
   $("areaPills").querySelectorAll("button").forEach(b => b.onclick = () => { if (scope) return; AREA = b.dataset.a; renderPills(scope); renderTab(); });
 }
 function start(){
-  prep();
+  const lim = USER.lim;
   const ORD = ["AREA DENPASAR","AREA KUTA","AREA MATARAM","AREA KUPANG"];
   D.areas.sort((x,y) => (ORD.indexOf(x)+1||99) - (ORD.indexOf(y)+1||99));
   const scope = USER.akses && USER.akses !== "REGION" ? USER.akses : "";
   if (scope) AREA = scope; else if (!D.areas.includes(AREA)) AREA = "";
   renderPills(scope);
-  opts($("edcSeg"), [...new Set(D.edc.cube.map(r=>r[2]))].sort());
-  opts($("edcLob"), [...new Set(D.edc.cube.map(r=>r[3]))].sort());
-  opts($("edcTipe"), [...new Set(D.edc.cube.map(r=>r[4]))].filter(v=>v!=="-").sort());
-  opts($("lvmKelas"), [...new Set(Object.values(KELAS))].sort());
-  $("navEdc").innerHTML = `<i class="dot d-edc"></i>Merchant W${D.edc.week}`;
-  $("navWpr").hidden = !D.wpr;
-  if (D.wpr) $("navWpr").innerHTML = `<i class="dot d-wpr"></i>WPR W${D.wpr.weeks[D.wpr.weeks.length-1]} ${D.wpr.year}`;
+  document.querySelectorAll("#tabs button").forEach(b => b.hidden = lim && b.dataset.tab !== "merchant");
+  if (!lim){
+    prep();
+    opts($("edcSeg"), [...new Set(D.edc.cube.map(r=>r[2]))].sort());
+    opts($("edcLob"), [...new Set(D.edc.cube.map(r=>r[3]))].sort());
+    opts($("edcTipe"), [...new Set(D.edc.cube.map(r=>r[4]))].filter(v=>v!=="-").sort());
+    opts($("lvmKelas"), [...new Set(Object.values(KELAS))].sort());
+    $("navEdc").innerHTML = `<i class="dot d-edc"></i>Merchant W${D.edc.week}`;
+    $("navWpr").hidden = !D.wpr;
+    if (D.wpr) $("navWpr").innerHTML = `<i class="dot d-wpr"></i>WPR W${D.wpr.weeks[D.wpr.weeks.length-1]} ${D.wpr.year}`;
+  }
   $("userLine").textContent = USER.nama;
-  $("roleLine").textContent = [USER.jabatan, USER.unit].filter(Boolean).join(", ");
+  $("roleLine").textContent = [lim ? LIMITED_ROLES[USER.role] : USER.jabatan, USER.unit].filter(Boolean).join(", ");
   $("meFoto").outerHTML = avatarHtml(USER.foto, USER.nama, "sm").replace('class="avatar sm"', 'class="avatar sm" id="meFoto"');
   $("navUsers").hidden = USER.role !== "admin";
   if (USER.role === "admin") loadUsers().catch(e => console.warn(e));
   else if (TAB === "users") TAB = "ringkasan";
+  if (lim) { TAB = "merchant"; MS.sel = null; }
   $("footLine").textContent = `Data diperbarui ${D.generated}`;
-  $("footLine").title = `Sumber: ${D.sources.atm}, ${D.sources.edc}, ${D.sources.lvm}`;
+  $("footLine").title = "Sumber: " + Object.values(D.sources).filter(Boolean).join(", ");
   $("login").hidden = true; $("app").hidden = false;
-  renderTab();
+  goTab(TAB);
 }
 $("tabs").addEventListener("click", e => { const b = e.target.closest("button[data-tab]"); if (b) goTab(b.dataset.tab); });
 ["atmJenis","atmGroup","atmMetric","edcSeg","edcLob","edcTipe","lvmKelas"].forEach(id => $(id).addEventListener("change", renderTab));
 $("lobArea").addEventListener("change", () => { $("lobCab").value = ""; renderEdcLob(); });
 $("edcRankCab").addEventListener("change", renderEdcRank);
 $("lvmUsakCab").addEventListener("change", renderLvmUsak);
+["dtStat","usCab","usPrio"].forEach(id => $(id).addEventListener("change", renderTab));
 $("ovEdcSeg").addEventListener("change", renderOvDrops);
 ["wSeg","wEnv"].forEach(id => $(id).addEventListener("change", () => { $("wCab").value = ""; renderWPR(); }));
 $("wCab").addEventListener("change", renderWPR);

@@ -88,6 +88,8 @@
         <div class="nav-sub" id="navWeeklySub">
           <button data-tab="duta" id="navDuta">Dashboard GMM Duta Transaksi</button>
           <button data-tab="usak" id="navUsak">Dashboard GMM USAK Livin' Merchant Fase 3</button>
+          <button data-tab="senator" id="navSenator">Dashboard Monitoring Senator</button>
+          <button data-tab="akuisisi" id="navAkq">Dashboard Akuisisi EDC</button>
         </div>
       </div>
       <button data-tab="ringkasan" class="active"><i class="dot d-all"></i>Overview</button>
@@ -262,6 +264,37 @@
         <div id="tUsMer"></div>
       </div>
       <div class="panel notes" id="usNotes"></div>
+    </section>
+
+    <!-- SENATOR -->
+    <section class="tab" id="tab-senator" hidden>
+      <div class="kpis" id="snKpis"></div>
+      <div class="grid g2">
+        <div class="panel"><div class="panel-head"><h3>Progres klaim Gold</h3><p>Jumlah merchant universe Senator yang sudah klaim Gold</p></div><div class="chart"><div id="cSnProg" class="mc"></div></div></div>
+        <div class="panel"><div class="panel-head"><h3 id="snAreaT">Klaim Gold dan USAK per area</h3><p>% klaim Gold dari universe dan % USAK dari akuisisi CBG</p></div><div class="chart"><div id="cSnArea" class="mc"></div></div></div>
+      </div>
+      <div class="panel"><div class="panel-head"><h3>Bottom 10 cabang</h3><p>Cabang dengan persentase paling rendah</p></div>
+        <div class="grid g2 bot-grid"><div class="bot" id="snBotGold"></div><div class="bot" id="snBotUsak"></div></div></div>
+      <div class="panel"><div class="panel-head"><h3>Per cabang</h3><p>Klik baris untuk melihat daftar merchant universe cabang tersebut</p></div><div id="tSnCab"></div></div>
+      <div class="panel rank-panel" id="snUniPanel">
+        <div class="panel-head rank-head"><div><h3>Universe merchant Senator</h3><p id="snUniInfo">Merchant di sekitar cabang. Klik nama untuk membuka lokasinya di Google Maps.</p></div>
+          <div class="rank-ctl"><label>Cabang <select id="snCab"></select></label><label>Status <select id="snStat"><option value="">Semua</option><option value="0">Belum klaim (Blue)</option><option value="1">Sudah klaim (Gold)</option></select></label></div></div>
+        <div id="tSnUni"></div>
+      </div>
+      <div class="panel notes" id="snNotes"></div>
+    </section>
+
+    <!-- AKUISISI EDC -->
+    <section class="tab" id="tab-akuisisi" hidden>
+      <div class="filters"><label>Kelas cabang <select id="aqKelas"></select></label></div>
+      <div class="kpis" id="aqKpis"></div>
+      <div class="grid g21">
+        <div class="panel"><div class="panel-head"><h3>Akuisisi EDC per bulan</h3><p>Merchant EDC baru, channel cabang</p></div><div class="chart"><div id="cAqMon" class="mc"></div></div></div>
+        <div class="panel"><div class="panel-head"><h3 id="aqAreaT">Akuisisi MTD per area</h3><p>Dibanding target MTD</p></div><div class="chart"><div id="cAqArea" class="mc"></div></div></div>
+      </div>
+      <div class="panel"><div class="panel-head"><h3>Cabang tertinggi dan terendah per kelas</h3><p>Berdasarkan pencapaian akuisisi MTD terhadap target</p></div><div class="grid g2 bot-grid" id="aqKelasBox"></div></div>
+      <div class="panel"><div class="panel-head"><h3>Cabang nihil akuisisi</h3><p id="aqNihilP"></p></div><div class="grid g2 bot-grid" id="aqNihil"></div></div>
+      <div class="panel"><div class="panel-head"><h3>Per cabang</h3><p>Klik judul kolom untuk mengurutkan</p></div><div id="tAqCab"></div></div>
     </section>
 
     <!-- CARI MERCHANT -->

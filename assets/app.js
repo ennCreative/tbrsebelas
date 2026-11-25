@@ -1599,6 +1599,116 @@ $("kcGrid").addEventListener("keydown", e => { if ((e.key==="Enter" || e.key==="
 $("kcInfo").addEventListener("click", e => { if (e.target.id === "kcReset"){ KC_JR = ""; renderKpiCards(); } });
 $("kcPng").addEventListener("click", kcDownloadPng);
 
+
+/* ------------------------------------------------------------------ Excel (.xlsx) & ZIP tanpa library */
+const XZ = (() => {
+  const T = new Uint32Array(256); for (let n=0;n<256;n++){ let c=n; for (let k=0;k<8;k++) c = c&1 ? 0xEDB88320^(c>>>1) : c>>>1; T[n]=c>>>0; }
+  const crc = u => { let c = 0xFFFFFFFF; for (let i=0;i<u.length;i++) c = T[(c^u[i])&255]^(c>>>8); return (c^0xFFFFFFFF)>>>0; };
+  const enc = new TextEncoder();
+  // ZIP tanpa kompresi (store); nama file UTF-8
+  function zip(files){
+    const parts = [], cen = []; let off = 0;
+    const d = new Date(), dt = ((d.getHours()<<11)|(d.getMinutes()<<5)|(d.getSeconds()>>1)) & 0xFFFF, dd = (((d.getFullYear()-1980)<<9)|((d.getMonth()+1)<<5)|d.getDate()) & 0xFFFF;
+    for (const f of files){
+      const name = enc.encode(f.name), data = typeof f.data === "string" ? enc.encode(f.data) : f.data, c = crc(data);
+      const h = new DataView(new ArrayBuffer(30));
+      h.setUint32(0,0x04034b50,true); h.setUint16(4,20,true); h.setUint16(6,0x0800,true); h.setUint16(8,0,true); h.setUint16(10,dt,true); h.setUint16(12,dd,true);
+      h.setUint32(14,c,true); h.setUint32(18,data.length,true); h.setUint32(22,data.length,true); h.setUint16(26,name.length,true); h.setUint16(28,0,true);
+      parts.push(new Uint8Array(h.buffer), name, data);
+      const e = new DataView(new ArrayBuffer(46));
+      e.setUint32(0,0x02014b50,true); e.setUint16(4,20,true); e.setUint16(6,20,true); e.setUint16(8,0x0800,true); e.setUint16(10,0,true); e.setUint16(12,dt,true); e.setUint16(14,dd,true);
+      e.setUint32(16,c,true); e.setUint32(20,data.length,true); e.setUint32(24,data.length,true); e.setUint16(28,name.length,true); e.setUint32(42,off,true);
+      cen.push(new Uint8Array(e.buffer), name);
+      off += 30 + name.length + data.length;
+    }
+    const cs = cen.reduce((a,b)=>a+b.length,0), z = new DataView(new ArrayBuffer(22));
+    z.setUint32(0,0x06054b50,true); z.setUint16(8,files.length,true); z.setUint16(10,files.length,true); z.setUint32(12,cs,true); z.setUint32(16,off,true);
+    const all = [...parts, ...cen, new Uint8Array(z.buffer)], out = new Uint8Array(all.reduce((a,b)=>a+b.length,0));
+    let p = 0; for (const a of all){ out.set(a,p); p += a.length; }
+    return out;
+  }
+  const x = v => String(v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,"");
+  const colL = i => { let s=""; i++; while (i){ const m=(i-1)%26; s=String.fromCharCode(65+m)+s; i=Math.floor((i-1)/26); } return s; };
+  // style: 0 biasa, 1 judul, 2 header, 3 angka #,##0, 4 persen 0,0%, 5 keterangan abu, 6 angka merah
+  const STY = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<numFmts count="1"><numFmt numFmtId="164" formatCode="0.0%"/></numFmts>
+<fonts count="5"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="13"/><color rgb="FF0E2A47"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font><font><i/><sz val="10"/><color rgb="FF6B7785"/><name val="Calibri"/></font><font><sz val="11"/><color rgb="FFB42A2A"/><name val="Calibri"/></font></fonts>
+<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF0E2A47"/><bgColor indexed="64"/></patternFill></fill></fills>
+<borders count="2"><border/><border><bottom style="thin"><color rgb="FFDFE4EA"/></bottom></border></borders>
+<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+<cellXfs count="7"><xf numFmtId="0" fontId="0" fillId="0" borderId="1" applyBorder="1"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" applyFont="1"/><xf numFmtId="0" fontId="2" fillId="2" borderId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment wrapText="1" vertical="center"/></xf><xf numFmtId="3" fontId="0" fillId="0" borderId="1" applyNumberFormat="1" applyBorder="1"/><xf numFmtId="164" fontId="0" fillId="0" borderId="1" applyNumberFormat="1" applyBorder="1"/><xf numFmtId="0" fontId="3" fillId="0" borderId="0" applyFont="1"/><xf numFmtId="3" fontId="4" fillId="0" borderId="1" applyNumberFormat="1" applyFont="1" applyBorder="1"/></cellXfs>
+<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+</styleSheet>`;
+  // sheets: [{name, rows:[[{v,s}|value]], widths:[], freeze:rowIndex}]
+  function xlsx(sheets){
+    const ws = sheets.map(sh => {
+      const rows = sh.rows.map((r,ri) => `<row r="${ri+1}">${r.map((c,ci) => { if (c==null || c==="") return "";
+        const o = typeof c === "object" ? c : {v:c}, ref = colL(ci)+(ri+1), st = o.s!=null ? ` s="${o.s}"` : (typeof o.v === "number" ? ' s="3"' : "");
+        return typeof o.v === "number" && isFinite(o.v) ? `<c r="${ref}"${st}><v>${o.v}</v></c>` : `<c r="${ref}" t="inlineStr"${st}><is><t xml:space="preserve">${x(o.v)}</t></is></c>`; }).join("")}</row>`).join("");
+      const cols = sh.widths ? `<cols>${sh.widths.map((w,i)=>`<col min="${i+1}" max="${i+1}" width="${w}" customWidth="1"/>`).join("")}</cols>` : "";
+      const pane = sh.freeze ? `<sheetViews><sheetView workbookViewId="0"><pane ySplit="${sh.freeze}" topLeftCell="A${sh.freeze+1}" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>` : "";
+      return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">${pane}${cols}<sheetData>${rows}</sheetData></worksheet>`;
+    });
+    const nm = s => x(String(s).replace(/[\\\/\?\*\[\]:]/g," ").slice(0,31));
+    return zip([
+      {name:"[Content_Types].xml", data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${ws.map((_,i)=>`<Override PartName="/xl/worksheets/sheet${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join("")}</Types>`},
+      {name:"_rels/.rels", data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`},
+      {name:"xl/workbook.xml", data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${sheets.map((s,i)=>`<sheet name="${nm(s.name)}" sheetId="${i+1}" r:id="rId${i+1}"/>`).join("")}</sheets></workbook>`},
+      {name:"xl/_rels/workbook.xml.rels", data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${ws.map((_,i)=>`<Relationship Id="rId${i+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i+1}.xml"/>`).join("")}<Relationship Id="rId${ws.length+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`},
+      {name:"xl/styles.xml", data:STY},
+      ...ws.map((d,i) => ({name:`xl/worksheets/sheet${i+1}.xml`, data:d}))]);
+  }
+  const save = (u8, file, type) => { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([u8], {type})); a.download = file; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); };
+  return {zip, xlsx, save};
+})();
+
+/* ---- tombol: Excel Top 20 SV Drop untuk semua cabang di area terpilih, dikemas ZIP */
+async function edcDropZip(){
+  const btn = $("edcDropZip"), info = $("edcRankInfo"), old = btn.textContent;
+  btn.disabled = true; btn.textContent = "Menyiapkan…";
+  try {
+    if (!BOX.merchant) await loadBox("merchant");
+    const m = BOX.merchant, L = m.labels.length, iY = L-3, iP = L-4, y = m.year, w = m.week;
+    const sv = (i,j) => mv(m,"sv",j,i)||0, tx = (i,j) => mv(m,"tx",j,i)||0, md = (i,j) => mv(m,"md",j,i)||0;
+    const byCab = {};
+    for (let i=0;i<m.n;i++) if (inArea(m.a[i])) (byCab[m.c[i]] || (byCab[m.c[i]] = [])).push(i);
+    const codes = Object.keys(byCab).sort((a,b) => (m.a[byCab[a][0]]||"").localeCompare(m.a[byCab[b][0]]||"") || bn(a).localeCompare(bn(b)));
+    const safe = s => String(s).replace(/[\\\/:*?"<>|]+/g," ").replace(/\s+/g," ").trim();
+    const scope = AREA ? title(AREA) : "Region XI";
+    const period = `YTD minggu ke-${w} ${y} dibanding minggu ke-${w} ${y-1}`;
+    const head = ["No","MID","Nama merchant","Nama official","Alamat","Segmen","LOB",`SV YTD W${w} ${y-1}`,`SV YTD W${w} ${y}`,"Penurunan SV","% YoY",`Frek YTD W${w} ${y-1}`,`Frek YTD W${w} ${y}`,`MDFG YTD W${w} ${y-1}`,`MDFG YTD W${w} ${y}`,"Jumlah EDC"];
+    const widths = [5,18,32,32,44,14,22,16,16,16,9,14,14,14,14,10];
+    const files = [], sum_ = [["No","Area","Kode","Cabang","MID di cabang","MID SV turun","Total penurunan Top 20 (Rp)","Total penurunan semua MID turun (Rp)"].map(v=>({v,s:2}))];
+    codes.forEach((c, k) => {
+      const idx = byCab[c];
+      const down = idx.filter(i => sv(i,iP) > 0 && sv(i,iY) < sv(i,iP));
+      const top = [...down].sort((a,b) => (sv(a,iY)-sv(a,iP)) - (sv(b,iY)-sv(b,iP))).slice(0,20);
+      const area = m.a[idx[0]] || "";
+      const rows = [
+        [{v:`Top 20 SV Drop Merchant e-Channel, ${bn(c)} (${c})`, s:1}],
+        [{v:`${title(area)}. ${period}. Diurutkan dari penurunan sales volume terbesar.`, s:5}],
+        [],
+        head.map(v => ({v, s:2})),
+        ...top.map((i,n) => { const a = sv(i,iP), b = sv(i,iY);
+          return [n+1, String(m.mid[i]||""), m.nm[i]||"", (m.on && m.on[i]) || "", (m.al && m.al[i]) || "", m.s[i]||"", (m.l && m.l[i]) || "",
+                  Math.round(a), Math.round(b), {v:Math.round(b-a), s:6}, {v:a ? (b-a)/a : 0, s:4}, Math.round(tx(i,iP)), Math.round(tx(i,iY)), Math.round(md(i,iP)), Math.round(md(i,iY)), m.edc ? (m.edc[i]||0) : ""]; })];
+      if (!top.length) rows.push([{v:"Tidak ada merchant dengan penurunan sales volume di cabang ini.", s:5}]);
+      rows.push([], [{v:`Sumber: Merchant W${w} ${y}. Diunduh dari Dashboard TBR Region XI, ${new Date().toLocaleString("id-ID")}.`, s:5}]);
+      const fname = `${safe(c+" - "+bn(c))}.xlsx`;
+      files.push({name: AREA ? fname : `${safe(title(area))}/${fname}`, data: XZ.xlsx([{name:"Top 20 SV Drop", rows, widths, freeze:4}])});
+      sum_.push([k+1, title(area), c, bn(c), idx.length, down.length, {v:Math.round(top.reduce((t,i)=>t+sv(i,iY)-sv(i,iP),0)), s:6}, {v:Math.round(down.reduce((t,i)=>t+sv(i,iY)-sv(i,iP),0)), s:6}]);
+    });
+    const ring = XZ.xlsx([{name:"Ringkasan", widths:[5,16,8,34,14,14,24,26], freeze:3, rows:[
+      [{v:`Ringkasan Top 20 SV Drop per cabang, ${scope}`, s:1}], [{v:`${period}. Satu file Excel per cabang ada di dalam ZIP ini.`, s:5}], ...sum_]}]);
+    files.unshift({name:`00 Ringkasan ${safe(scope)}.xlsx`, data:ring});
+    const zipName = `Top20_SV_Drop_W${w}_${y}_${safe(scope).replace(/\s+/g,"_")}.zip`;
+    XZ.save(XZ.zip(files), zipName, "application/zip");
+    info.textContent = `${zipName} diunduh: ${codes.length} file cabang dan 1 ringkasan.`;
+  } catch(e){ info.textContent = "Gagal menyiapkan ZIP: " + e.message; }
+  finally { btn.disabled = false; btn.textContent = old; }
+}
+$("edcDropZip").addEventListener("click", edcDropZip);
+
 const RENDER = {ringkasan:renderSummary, atm:renderATM, edc:renderEDC, lvm:renderLVM, cabang:renderCabang, merchant:renderMerchant, users:renderUsers, wpr:renderWPR, duta:renderDuta, usak:renderUsak, senator:renderSenator, akuisisi:renderAkuisisi};
 let TAB = "ringkasan";
 const TITLES = {ringkasan:"Overview", atm:"ATM & CRM", edc:"EDC Merchant", lvm:"Livin' Merchant", cabang:"Scorecard cabang", merchant:"Pencarian", users:"Kelola pengguna", wpr:"Weekly Performance Report", duta:"Dashboard GMM Duta Transaksi", usak:"Dashboard GMM USAK Livin' Merchant Fase 3", senator:"Dashboard Monitoring Senator", akuisisi:"Dashboard Akuisisi EDC"};

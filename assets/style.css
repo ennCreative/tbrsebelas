@@ -524,3 +524,5 @@ a.map-a:hover{text-decoration:underline}
 .kc-tbl tr.kc-jr.on td{background:#fff6d6;color:var(--ink);font-weight:700}
 .kc-tbl tr.kc-jr.on td:first-child{box-shadow:inset 3px 0 0 var(--gold)}
 .kc-reset{margin-left:8px;border:1px solid var(--gold);background:#fff6d6;color:var(--ink);border-radius:999px;padding:2px 10px;font:700 12px/1.6 inherit;font-family:inherit;cursor:pointer}
+.kc-dl:disabled{opacity:.6;cursor:progress}
+.rank-ctl .kc-dl{align-self:flex-end}

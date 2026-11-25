@@ -471,13 +471,14 @@ async function renderEdcRank(){
   const idxArea = []; for (let i=0;i<m.n;i++) if (inArea(m.a[i])) idxArea.push(i);
   const cab = cabOptions($("edcRankCab"), idxArea.map(i => m.c[i]));
   const idx = cab ? idxArea.filter(i => m.c[i] === cab) : idxArea;
-  const nmCol = {k:"nm", l:"Merchant", h:(x,v)=>`<span class="nm-cut" title="${esc(v)}${cab?"":" · "+esc(x.cb)}">${esc(v)}</span>`};
+  if (!RSN.rows && !RSN.p) loadReasons().then(() => { if (TAB === "edc") renderEdcRank(); }).catch(() => {});
+  const nmCol = {k:"nm", l:"Merchant", h:(x,v)=>`<span class="nm-cut" title="${esc(v)}${cab?"":" · "+esc(x.cb)}">${esc(v)}</span>${hasReason(x.mid, v)?`<span class="rs-dot" title="Sudah ada reason">R</span>`:""}`};
   for (const [k, fmt] of [["sv",fC],["tx",fN],["md",fC]]){
     const cur = i => mv(m,k,iY,i)||0, prev = i => mv(m,k,iP,i)||0;
     const rowOf = (i,n) => ({rk:n+1, nm:m.nm[i]||"–", mid:m.mid[i]||"", cb:m.c[i]+" - "+bn(m.c[i]), cur:cur(i), prev:prev(i), d:cur(i)-prev(i), g:gr(cur(i),prev(i))});
     const top = idx.filter(i => cur(i) > 0).sort((a,b) => cur(b) - cur(a)).slice(0,20).map(rowOf);
     const drop = idx.filter(i => prev(i) > 0 && cur(i) < prev(i)).sort((a,b) => (cur(a)-prev(a)) - (cur(b)-prev(b))).slice(0,20).map(rowOf);
-    const mk = (el, rows, cols, csv) => { el._st = null; table(el, {rows, cols, page:20, search:false, full:true, csv, rowKey:x=>x.mid, onRow:mid => openInSearch("edc","mid",mid)}); };
+    const mk = (el, rows, cols, csv) => { el._st = null; table(el, {rows, cols, page:20, search:false, full:true, csv, rowKey:x=>x.mid || "nm:"+x.nm, onRow:k => k.startsWith("nm:") ? openMerchantMenu("", k.slice(3)) : openMerchantMenu(k, (rows.find(r => r.mid === k)||{}).nm)}); };
     mk($(`tTop_${k}`), top, [{k:"rk",l:"#",num:1}, nmCol, {k:"cur",l:`${y}`,num:1,f:fmt}, {k:"g",l:"YoY",num:1,h:(x,v)=>growthTag(v)}], `top20_${k}_${cab||"semua"}`);
     mk($(`tDrop_${k}`), drop, [{k:"rk",l:"#",num:1}, nmCol, {k:"d",l:"Turun",num:1,h:(x,v)=>`<span class="down">${fmt(v)}</span>`}, {k:"g",l:"%",num:1,h:(x,v)=>growthTag(v)}], `drop20_${k}_${cab||"semua"}`);
   }
@@ -1003,9 +1004,10 @@ function renderSummary(){
     <span class="asof-i"><i class="dot d-atm"></i>ATM &amp; CRM <b>${atmEnd.getDate()} ${BLN[A.last]} ${A.year}</b></span>
     <span class="asof-i"><i class="dot d-edc"></i>e-Channel <b>Minggu ke-${E.week} ${E.year}</b></span>
     <span class="asof-i"><i class="dot d-lvm"></i>Livin' Merchant <b>${d} ${BLN[m-1]} ${y}</b></span>
-    ${D.duta?`<span class="asof-i"><i class="dot d-duta"></i>Duta Transaksi <b>${esc(D.duta.asof)}</b> <button class="head-btn asof-btn" id="goDuta">Buka Duta Transaksi</button></span>`:""}
+    ${D.duta?`<span class="asof-i"><i class="dot d-duta"></i>Duta Transaksi <b>${esc(D.duta.asof)}</b></span>`:""}
+    <button class="head-btn asof-btn" id="goReason">Reason SV Drop</button>
     <span class="asof-i upd">Diperbarui ${esc(D.generated)}</span>`;
-  if ($("goDuta")) $("goDuta").onclick = () => goTab("duta");
+  $("goReason").onclick = () => goTab("reason");
 
   // ---- Ringkasan KPI (kartu per produk)
   renderKpiCards();
@@ -1191,7 +1193,7 @@ async function renderOvDrops(){
     .sort((a,b) => a.d - b.d).slice(0,10).map((x,i) => ({...x, rk:i+1}));
   $("ovEdcInfo").textContent = `Sales volume YTD minggu ke-${m.week} ${m.year} dibanding minggu yang sama ${m.year-1}, per nama merchant (MID dengan nama sama digabung). Klik baris untuk performance lengkap.`;
   $("tOvEdcDrop")._st = null;
-  table($("tOvEdcDrop"), {rows, search:false, full:true, page:10, csv:"top10_sv_drop_edc", rowKey:x=>x.nm, onRow:nm => openInSearch("edc","nm",nm), cols:[
+  table($("tOvEdcDrop"), {rows, search:false, full:true, page:10, csv:"top10_sv_drop_edc", rowKey:x=>x.nm, onRow:nm => openMerchantMenu((rows.find(r => r.nm === nm)||{}).mid || "", nm), cols:[
     {k:"rk",l:"#",num:1}, {k:"nm",l:"Merchant"}, {k:"nmid",l:"MID",num:1,f:fN}, {k:"cb",l:"Cabang"}, {k:"s",l:"Segmen"},
     {k:"p",l:`SV ${m.year-1}`,num:1,f:fC}, {k:"c",l:`SV ${m.year}`,num:1,f:fC}, {k:"d",l:"Penurunan",num:1,h:(x,v)=>`<span class="down">${fC(v)}</span>`}, {k:"g",l:"%",num:1,h:(x,v)=>growthTag(v)}]});
 }
@@ -1716,10 +1718,206 @@ async function edcDropZip(){
 }
 $("edcDropZip").addEventListener("click", edcDropZip);
 
-const RENDER = {ringkasan:renderSummary, atm:renderATM, edc:renderEDC, lvm:renderLVM, cabang:renderCabang, merchant:renderMerchant, users:renderUsers, wpr:renderWPR, duta:renderDuta, usak:renderUsak, senator:renderSenator, akuisisi:renderAkuisisi};
+
+/* ================================================================== REASON SV DROP */
+const RS_KAT = ["Musiman / sepi pembeli","Beralih ke EDC/QRIS bank lain","EDC rusak atau bermasalah","Tutup sementara / renovasi","Tutup permanen","Pindah lokasi","Usaha menurun","Transaksi dialihkan ke MID/rekening lain","Lainnya"];
+const RSN = {rows:null, p:null};
+const normNm = v => String(v||"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
+function loadReasons(force){
+  if (RSN.rows && !force) return Promise.resolve(RSN.rows);
+  if (!RSN.p || force) RSN.p = sb("/rest/v1/merchant_reasons?select=*&order=created_at.desc&limit=20000")
+    .then(r => { RSN.rows = r || []; return RSN.rows; })
+    .catch(e => { RSN.p = null; throw e; });
+  return RSN.p;
+}
+function reasonsFor(mid, nm){
+  if (!RSN.rows) return [];
+  const n = normNm(nm);
+  // MID tetap sama antar minggu -> cocokkan MID; jika salah satu tidak punya MID, cocokkan nama merchant
+  return RSN.rows.filter(r => r.mid && mid ? String(r.mid) === String(mid) : normNm(r.nama_merchant) === n);
+}
+const hasReason = (mid, nm) => reasonsFor(mid, nm).length > 0;
+let MIDX = null;
+function merchantIdx(mid, nm){
+  const m = BOX.merchant; if (!m) return -1;
+  if (!MIDX || MIDX.m !== m){ MIDX = {m, mid:new Map(), nm:new Map()}; for (let i=0;i<m.n;i++){ if (m.mid[i]) MIDX.mid.set(String(m.mid[i]), i); const k = normNm(m.nm[i]); if (k && !MIDX.nm.has(k)) MIDX.nm.set(k, i); } }
+  if (mid && MIDX.mid.has(String(mid))) return MIDX.mid.get(String(mid));
+  return nm ? (MIDX.nm.get(normNm(nm)) ?? -1) : -1;
+}
+function merchantInfo(i){
+  const m = BOX.merchant, L = m.labels.length, a = mv(m,"sv",L-4,i)||0, b = mv(m,"sv",L-3,i)||0;
+  return {i, mid:String(m.mid[i]||""), nm:m.nm[i]||"–", on:(m.on&&m.on[i])||"", c:m.c[i], cb:bn(m.c[i]), a:m.a[i], seg:m.s[i], prev:a, cur:b, d:b-a, g:gr(b,a), week:`W${m.week} ${m.year}`};
+}
+const rsDate = v => { if (!v) return "–"; const d = new Date(v); return isNaN(d) ? v : `${d.getDate()} ${BLN[d.getMonth()]} ${d.getFullYear()}`; };
+const rsTime = v => { if (!v) return "–"; const d = new Date(v); return isNaN(d) ? v : d.toLocaleString("id-ID", {day:"numeric", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit"}); };
+const canEdit = r => USER.role === "admin" || (SESSION && SESSION.user && r.created_by === SESSION.user.id);
+
+function dlgOpen(t, sub, html){
+  $("mDlgT").textContent = t; $("mDlgS").textContent = sub || ""; $("mDlgBody").innerHTML = html;
+  const d = $("mDlg"); if (!d.open) d.showModal();
+}
+function dlgClose(){ const d = $("mDlg"); if (d.open) d.close(); }
+$("mDlgX").addEventListener("click", dlgClose);
+$("mDlg").addEventListener("click", e => { if (e.target === $("mDlg")) dlgClose(); });
+
+// klik merchant di Merchant W46 -> pilihan Detail / Reason
+async function openMerchantMenu(mid, nm){
+  dlgOpen(nm || mid || "Merchant", "Menyiapkan data…", "");
+  try { if (!BOX.merchant) await loadBox("merchant"); } catch(e){ $("mDlgBody").innerHTML = `<p class="note">Gagal memuat data merchant: ${esc(e.message)}</p>`; return; }
+  const i = merchantIdx(mid, nm);
+  const info = i >= 0 ? merchantInfo(i) : {i:-1, mid:mid||"", nm:nm||"–", c:"", cb:"", a:"", prev:0, cur:0, d:0, g:null, week:""};
+  try { await loadReasons(); } catch(e){}
+  const rs = reasonsFor(info.mid, info.nm), last = rs[0];
+  dlgOpen(info.nm, [info.mid && "MID "+info.mid, info.cb && `${info.cb} (${info.c})`].filter(Boolean).join(", "), `
+    <div class="md-sv">${info.i>=0 ? `<div><span>SV YTD ${esc(info.week)}</span><b>${fRp(info.cur)}</b></div><div><span>Tahun lalu</span><b>${fRp(info.prev)}</b></div><div><span>Selisih</span><b class="${info.d>=0?"good":"bad"}">${fRp(info.d)}</b></div><div><span>YoY</span><b>${growthTag(info.g)}</b></div>` : `<p class="note">Merchant tidak ditemukan di data minggu ini.</p>`}</div>
+    ${last ? `<div class="md-last"><b>Reason terakhir</b> (${esc(rsDate(last.tgl_kontak))}, ${esc(last.created_by_nama||"–")}): ${last.kategori?`<span class="tag mid">${esc(last.kategori)}</span> `:""}${esc(last.alasan)}${rs.length>1?` <small class="muted">${rs.length} reason tersimpan</small>`:""}</div>` : ""}
+    <div class="md-act">
+      <button class="md-btn" id="mdDetail"><b>Detail merchant</b><span>Rincian dan performance lengkap di Pencarian</span></button>
+      <button class="md-btn pri" id="mdReason"><b>Reason merchant</b><span>${rs.length ? "Lihat riwayat atau tambah reason" : "Isi alasan SV drop dan tanggal kontak"}</span></button>
+    </div>`);
+  $("mdDetail").onclick = () => { dlgClose(); openInSearch("edc", info.mid ? "mid" : "nm", info.mid || info.nm); };
+  $("mdReason").onclick = () => openReasonForm(info);
+}
+
+function openReasonForm(info, edit){
+  const rs = reasonsFor(info.mid, info.nm);
+  const today = new Date(Date.now() - new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
+  const e = edit || {};
+  dlgOpen(edit ? "Ubah reason" : "Reason merchant", `${info.nm}${info.mid?", MID "+info.mid:""}${info.cb?", "+info.cb:""}`, `
+    <form id="rsForm" class="rs-form">
+      <label>Kategori alasan<select id="rfKat"><option value="">Pilih kategori</option>${RS_KAT.map(k=>`<option${e.kategori===k?" selected":""}>${esc(k)}</option>`).join("")}</select></label>
+      <label>Alasan merchant<textarea id="rfAlasan" rows="4" maxlength="1000" required placeholder="Contoh: merchant beralih ke QRIS bank lain sejak Agustus karena biaya MDR; sudah ditawarkan program rate khusus.">${esc(e.alasan||"")}</textarea></label>
+      <div class="rs-2">
+        <label>Cara kontak<select id="rfCara">${["Visit","Telepon/WA","Lainnya"].map(k=>`<option${(e.cara_kontak||"Visit")===k?" selected":""}>${k}</option>`).join("")}</select></label>
+        <label>Tanggal visit / terakhir dihubungi<input type="date" id="rfTgl" required max="${today}" value="${esc(e.tgl_kontak||today)}"></label>
+      </div>
+      <p class="rs-by">Diinput oleh <b>${esc(edit ? (e.created_by_nama||"–") : USER.nama)}</b>${(edit ? e.created_by_unit : USER.unit) ? `, ${esc(edit ? e.created_by_unit : USER.unit)}` : ""}${edit ? `, ${esc(rsTime(e.created_at))}` : ""}</p>
+      <p class="rs-err" id="rfErr" role="alert"></p>
+      <div class="rs-btns">
+        <button type="button" class="kc-dl rs-back" id="rfBack">Kembali</button>
+        ${edit && canEdit(e) ? `<button type="button" class="kc-dl rs-del" id="rfDel">Hapus</button>` : ""}
+        <button type="submit" class="head-btn" id="rfSave">${edit ? "Simpan perubahan" : "Simpan reason"}</button>
+      </div>
+    </form>
+    ${!edit && rs.length ? `<div class="rs-hist"><h4>Riwayat reason (${rs.length})</h4>${rs.map(r => `<div class="rs-h">
+        <div><b>${esc(rsDate(r.tgl_kontak))}</b> · ${esc(r.cara_kontak||"")}${r.kategori?` <span class="tag mid">${esc(r.kategori)}</span>`:""}<p>${esc(r.alasan)}</p>
+        <small class="muted">${esc(r.created_by_nama||"–")}${r.created_by_unit?`, ${esc(r.created_by_unit)}`:""}, diinput ${esc(rsTime(r.created_at))}${r.updated_at?`, diubah ${esc(rsTime(r.updated_at))}`:""}${r.minggu_data?`, data ${esc(r.minggu_data)}`:""}</small></div>
+        ${canEdit(r) ? `<button class="kc-dl" data-edit="${r.id}">Ubah</button>` : ""}</div>`).join("")}</div>` : ""}`);
+  $("rfBack").onclick = () => edit ? openReasonForm(info) : openMerchantMenu(info.mid, info.nm);
+  document.querySelectorAll("#mDlgBody [data-edit]").forEach(b => b.onclick = () => openReasonForm(info, rs.find(r => String(r.id) === b.dataset.edit)));
+  if ($("rfDel")) $("rfDel").onclick = async () => {
+    if (!confirm("Hapus reason ini? Tindakan ini tidak bisa dibatalkan.")) return;
+    try { await sb(`/rest/v1/merchant_reasons?id=eq.${e.id}`, {method:"DELETE"}); await loadReasons(true); openReasonForm(info); afterReasonChange(); }
+    catch(err){ $("rfErr").textContent = "Gagal menghapus: " + err.message; }
+  };
+  $("rsForm").onsubmit = async ev => {
+    ev.preventDefault();
+    const alasan = $("rfAlasan").value.trim(), tgl = $("rfTgl").value;
+    if (alasan.length < 3){ $("rfErr").textContent = "Alasan minimal 3 karakter."; $("rfAlasan").focus(); return; }
+    if (!tgl || tgl > today){ $("rfErr").textContent = "Tanggal kontak wajib diisi dan tidak boleh melewati hari ini."; $("rfTgl").focus(); return; }
+    const body = {kategori:$("rfKat").value || null, alasan, cara_kontak:$("rfCara").value, tgl_kontak:tgl};
+    $("rfSave").disabled = true; $("rfSave").textContent = "Menyimpan…"; $("rfErr").textContent = "";
+    try {
+      if (edit) await sb(`/rest/v1/merchant_reasons?id=eq.${e.id}`, {method:"PATCH", body, headers:{Prefer:"return=representation"}});
+      else await sb("/rest/v1/merchant_reasons", {method:"POST", headers:{Prefer:"return=representation"}, body:{...body,
+        mid:info.mid || null, nama_merchant:info.nm, kode_cabang:info.c || null, area:info.a || null,
+        minggu_data:info.week || null, sv_turun:info.i>=0 ? Math.round(info.d) : null, sv_yoy:info.g!=null && isFinite(info.g) ? Math.round(info.g*10000)/10000 : null}});
+      await loadReasons(true);
+      openReasonForm(info);
+      $("rfErr").className = "rs-ok"; $("rfErr").textContent = edit ? "Perubahan tersimpan." : "Reason tersimpan.";
+      afterReasonChange();
+    } catch(err){
+      $("rfSave").disabled = false; $("rfSave").textContent = edit ? "Simpan perubahan" : "Simpan reason";
+      $("rfErr").textContent = /relation|does not exist|42P01|PGRST/.test(err.message + (err.code||"")) ? "Tabel reason belum dibuat di server. Admin perlu menjalankan supabase_reason.sql di Supabase." : "Gagal menyimpan: " + err.message;
+    }
+  };
+}
+function afterReasonChange(){ if (TAB === "reason") renderReason(); else if (TAB === "edc") renderEdcRank(); }
+
+// halaman Reason SV Drop
+function dropTargets(){
+  const m = BOX.merchant, L = m.labels.length, iY = L-3, iP = L-4, by = {};
+  for (let i=0;i<m.n;i++) if (inArea(m.a[i])) (by[m.c[i]] || (by[m.c[i]] = [])).push(i);
+  const sv = (i,j) => mv(m,"sv",j,i)||0, out = [];
+  for (const c in by){
+    by[c].filter(i => sv(i,iP) > 0 && sv(i,iY) < sv(i,iP)).sort((a,b) => (sv(a,iY)-sv(a,iP)) - (sv(b,iY)-sv(b,iP))).slice(0,20).forEach((i,n) => out.push({...merchantInfo(i), rk:n+1}));
+  }
+  return {list:out, cabs:Object.keys(by)};
+}
+async function renderReason(){
+  if (!BOX.merchant || !RSN.rows){
+    $("rsKpis").innerHTML = `<p class="note">Menyiapkan data merchant dan reason…</p>`;
+    try { await Promise.all([loadBox("merchant"), loadReasons()]); }
+    catch(e){ $("rsKpis").innerHTML = `<p class="note">${/relation|does not exist|42P01|PGRST/.test(e.message+(e.code||"")) ? "Tabel reason belum dibuat di server. Admin perlu menjalankan supabase_reason.sql di Supabase." : "Gagal memuat: "+esc(e.message)}</p>`; return; }
+    if (TAB !== "reason") return;
+  }
+  const {list, cabs} = dropTargets();
+  const cs = $("rsCab"), cv_ = cs.value;
+  cs.innerHTML = `<option value="">Semua cabang${AREA?` ${title(AREA)}`:""}</option>` + [...cabs].sort((a,b)=>bn(a).localeCompare(bn(b))).map(c => `<option value="${esc(c)}">${esc(bn(c))} (${esc(c)})</option>`).join("");
+  cs.value = cabs.includes(cv_) ? cv_ : "";
+  const ks = $("rsKat"), kv = ks.value;
+  ks.innerHTML = `<option value="">Semua kategori</option>` + [...RS_KAT, "Tanpa kategori"].map(k => `<option>${esc(k)}</option>`).join(""); ks.value = kv;
+  const cab = cs.value, kat = ks.value;
+  // reason terbaru per merchant, hanya untuk merchant di area/cabang terpilih
+  const latest = new Map();
+  for (const r of RSN.rows){
+    const key = r.mid || "nm:"+normNm(r.nama_merchant);
+    if (latest.has(key)) { latest.get(key).n++; continue; }
+    const i = merchantIdx(r.mid, r.nama_merchant), info = i >= 0 ? merchantInfo(i) : null;
+    const area = info ? info.a : r.area, c = info ? info.c : r.kode_cabang;
+    latest.set(key, {r, info, area, c, n:1});
+  }
+  const lat = [...latest.values()].filter(x => inArea(x.area) && (!cab || x.c === cab) && (!kat || (x.r.kategori || "Tanpa kategori") === kat));
+  const tl = list.filter(x => !cab || x.c === cab);
+  const done = tl.filter(x => hasReason(x.mid, x.nm)), todo = tl.filter(x => !hasReason(x.mid, x.nm));
+  const wk = Date.now() - 7*864e5;
+  const allRows = RSN.rows.filter(r => { const i = merchantIdx(r.mid, r.nama_merchant), a = i>=0 ? BOX.merchant.a[i] : r.area, c = i>=0 ? BOX.merchant.c[i] : r.kode_cabang; return inArea(a) && (!cab || c === cab); });
+  $("rsKpis").innerHTML =
+    kpi("Top 20 SV drop", fN(tl.length), `merchant, dari ${fN(cab ? 1 : cabs.length)} cabang`) +
+    kpi("Sudah ada reason", fN(done.length), `${pctHtml(tl.length ? done.length/tl.length : null)} dari Top 20 SV drop`, "", tl.length ? done.length/tl.length : null) +
+    kpi("Belum ada reason", fN(todo.length), `Penurunan SV ${fRp(sum(todo, x => x.d))}`) +
+    kpi("Reason diinput", fN(allRows.length), `${fN(allRows.filter(r => new Date(r.created_at) >= wk).length)} dalam 7 hari terakhir, ${fN(lat.length)} merchant`);
+
+  // cakupan per cabang
+  const cov = {}; for (const x of tl){ const o = cov[x.c] || (cov[x.c] = {c:x.c, a:x.a, n:0, d:0, sv:0}); o.n++; if (hasReason(x.mid, x.nm)) o.d++; o.sv += x.d; }
+  table($("tRsCov"), {csv:"reason_cakupan_cabang", sort:"p", dir:1, page:10, rows:Object.values(cov).map(o => ({kd:o.c, cb:bn(o.c), a:o.a, n:o.n, d:o.d, b:o.n-o.d, p:o.n ? o.d/o.n : null, sv:o.sv})),
+    rowKey:x => x.kd, onRow:k => { $("rsCab").value = k; renderReason(); }, cols:[
+    {k:"cb",l:"Cabang"}, {k:"a",l:"Area",f:a=>title(a).replace("Area ","")}, {k:"n",l:"Top 20 drop",num:1,f:fN}, {k:"d",l:"Sudah",num:1,f:fN}, {k:"b",l:"Belum",num:1,f:v=>v?`<b class="bad">${fN(v)}</b>`:"0"}, {k:"p",l:"% reason",num:1,f:pctHtml}],
+    foot:r => ["Total","",fN(sum(r,x=>x.n)),fN(sum(r,x=>x.d)),fN(sum(r,x=>x.b)),pctHtml(sum(r,x=>x.n)?sum(r,x=>x.d)/sum(r,x=>x.n):null)]});
+
+  const kc = {}; for (const x of lat){ const k = x.r.kategori || "Tanpa kategori"; kc[k] = (kc[k]||0) + 1; }
+  const kl = Object.keys(kc).sort((a,b) => kc[b]-kc[a]);
+  const kmax = Math.max(1, ...kl.map(k => kc[k])), ktot = sum(kl, k => kc[k]);
+  $("cRsKat").innerHTML = kl.length ? kl.map(k => `<button class="rs-bar${kat===k?" on":""}" data-kat="${esc(k)}" title="Filter kategori ${esc(k)}">
+      <span class="rs-bl">${esc(k)}</span><span class="rs-bt"><i style="width:${(kc[k]/kmax*100).toFixed(1)}%"></i></span><b>${fN(kc[k])}</b><small>${fP(kc[k]/ktot)}</small></button>`).join("")
+    : `<p class="note">Belum ada reason untuk filter ini.</p>`;
+  $("cRsKat").querySelectorAll("[data-kat]").forEach(b => b.onclick = () => { $("rsKat").value = kat === b.dataset.kat ? "" : b.dataset.kat; renderReason(); });
+
+  table($("tRsList"), {csv:"reason_sv_drop", sort:"tgl", page:15, rows:lat.map(x => ({key:x.r.mid ? "mid:"+x.r.mid : "nm:"+x.r.nama_merchant, tgl:x.r.tgl_kontak, nm:x.info ? x.info.nm : x.r.nama_merchant, mid:x.r.mid||"", cb:x.c ? bn(x.c) : "–",
+      d:x.info ? x.info.d : null, g:x.info ? x.info.g : null, kat:x.r.kategori||"–", al:x.r.alasan, cara:x.r.cara_kontak||"–", by:x.r.created_by_nama||"–", at:x.r.created_at, n:x.n})),
+    rowKey:x => x.key, onRow:k => { const [t, ...v] = k.split(":"); const val = v.join(":"); openReasonFromKey(t === "mid" ? val : "", t === "nm" ? val : (lat.find(x => x.r.mid === val)||{r:{}}).r.nama_merchant); }, cols:[
+    {k:"tgl",l:"Tgl kontak",f:rsDate}, {k:"nm",l:"Merchant",f:(v,x)=>`<span class="nm-cut" title="${esc(v)}${x.mid?" · MID "+esc(x.mid):""}">${esc(v)}</span>`}, {k:"cb",l:"Cabang"},
+    {k:"d",l:"SV turun",num:1,f:v=>v==null?"–":`<span class="${v>=0?"good":"bad"}">${fC(v)}</span>`}, {k:"g",l:"YoY",num:1,f:v=>growthTag(v)},
+    {k:"kat",l:"Kategori"}, {k:"al",l:"Alasan",f:v=>`<span class="addr" title="${esc(v)}">${esc(v)}</span>`}, {k:"cara",l:"Kontak"},
+    {k:"by",l:"Diinput oleh"}, {k:"at",l:"Waktu input",f:rsTime}, {k:"n",l:"Riwayat",num:1,f:fN}]});
+
+  table($("tRsTodo"), {csv:"top20_sv_drop_belum_reason", sort:"d", dir:1, page:15, rows:todo.map(x => ({...x, key:x.mid ? "mid:"+x.mid : "nm:"+x.nm})),
+    rowKey:x => x.key, onRow:k => { const x = todo.find(t => (t.mid ? "mid:"+t.mid : "nm:"+t.nm) === k); if (x) openReasonForm(x); }, cols:[
+    {k:"rk",l:"Rank",num:1}, {k:"nm",l:"Merchant",f:(v,x)=>`<span class="nm-cut" title="${esc(v)}${x.mid?" · MID "+esc(x.mid):""}">${esc(v)}</span>`}, {k:"mid",l:"MID"}, {k:"cb",l:"Cabang"}, {k:"seg",l:"Segmen",f:v=>title(v||"–")},
+    {k:"prev",l:"SV tahun lalu",num:1,f:fC}, {k:"cur",l:"SV tahun ini",num:1,f:fC}, {k:"d",l:"Turun",num:1,f:v=>`<span class="bad">${fC(v)}</span>`}, {k:"g",l:"YoY",num:1,f:v=>growthTag(v)}]});
+}
+async function openReasonFromKey(mid, nm){
+  if (!BOX.merchant) await loadBox("merchant");
+  const i = merchantIdx(mid, nm);
+  const r0 = reasonsFor(mid, nm)[0] || {};
+  openReasonForm(i >= 0 ? merchantInfo(i) : {i:-1, mid:mid||r0.mid||"", nm:nm||r0.nama_merchant||"–", c:r0.kode_cabang||"", cb:r0.kode_cabang ? bn(r0.kode_cabang) : "", a:r0.area||"", d:0, g:null, week:""});
+}
+["rsCab","rsKat"].forEach(id => $(id).addEventListener("change", renderReason));
+
+const RENDER = {ringkasan:renderSummary, atm:renderATM, edc:renderEDC, lvm:renderLVM, cabang:renderCabang, merchant:renderMerchant, users:renderUsers, wpr:renderWPR, duta:renderDuta, usak:renderUsak, senator:renderSenator, akuisisi:renderAkuisisi, reason:renderReason};
 let TAB = "ringkasan";
-const TITLES = {ringkasan:"Overview", atm:"ATM & CRM", edc:"EDC Merchant", lvm:"Livin' Merchant", cabang:"Scorecard cabang", merchant:"Pencarian", users:"Kelola pengguna", wpr:"Weekly Performance Report", duta:"Dashboard GMM Duta Transaksi", usak:"Dashboard GMM USAK Livin' Merchant Fase 3", senator:"Dashboard Monitoring Senator", akuisisi:"Dashboard Akuisisi EDC"};
-const PARENT = {duta:"ringkasan", usak:"lvm"};        // halaman turunan: tidak punya menu sendiri
+const TITLES = {ringkasan:"Overview", atm:"ATM & CRM", edc:"EDC Merchant", lvm:"Livin' Merchant", cabang:"Scorecard cabang", merchant:"Pencarian", users:"Kelola pengguna", wpr:"Weekly Performance Report", duta:"Dashboard GMM Duta Transaksi", usak:"Dashboard GMM USAK Livin' Merchant Fase 3", senator:"Dashboard Monitoring Senator", akuisisi:"Dashboard Akuisisi EDC", reason:"Reason SV Drop"};
+const PARENT = {duta:"ringkasan", usak:"lvm", reason:"ringkasan"};        // halaman turunan: tidak punya menu sendiri
 function subTitle(){
   if (USER.lim) return `Cari merchant e-Channel atau Livin' Merchant, lalu lihat performance lengkapnya`;
   const {y,m,d} = lvmDate();
@@ -1731,6 +1929,7 @@ function subTitle(){
     cabang:`ATM ${BLN[D.atm.last]}, EDC minggu ${D.edc.week}, Livin' Merchant ${d} ${BLN[m-1]} ${y}`,
     merchant: USER.lim ? `Cari merchant e-Channel atau Livin' Merchant, lalu lihat performance lengkapnya` : `Cari merchant e-Channel, Livin' Merchant, atau mesin ATM, lalu lihat performance lengkapnya`,
     users:`Setujui pendaftaran, atur akses area, dan nonaktifkan akun`,
+    reason: `Alasan penurunan sales volume merchant e-Channel, diisi oleh tim cabang. Pembanding: Top 20 SV drop per cabang, YTD W${D.edc.week} ${D.edc.year}`,
     duta: D.duta ? `Region XI Bali & Nusra, posisi ${D.duta.asof}${D.duta.since?`, dihitung sejak ${D.duta.since}`:""}` : "",
     usak: D.usak ? `Akuisisi Livin' Merchant oleh pegawai${D.usak.period?`, ${D.usak.period}`:""}${D.usak.asof && !D.usak.period.endsWith(D.usak.asof)?`, posisi USAK ${D.usak.asof}`:""}` : "",
     senator: D.senator ? `Region XI Bali & Nusra, posisi ${D.senator.posisi} (tarikan EDA)` : "",
@@ -1746,7 +1945,8 @@ function renderTab(){
 function goTab(t){
   if (USER.lim) t = "merchant";
   TAB = t;
-  document.querySelectorAll("#tabs button[data-tab]").forEach(x => x.classList.toggle("active", x.dataset.tab===t));
+  const navT = document.querySelector(`#tabs button[data-tab="${t}"]`) ? t : (PARENT[t] || t);
+  document.querySelectorAll("#tabs button[data-tab]").forEach(x => x.classList.toggle("active", x.dataset.tab===navT));
   if (["duta","usak","senator","akuisisi"].includes(t)) setWeekly(true);
   document.querySelectorAll(".tab").forEach(s => s.hidden = s.id !== "tab-"+t);
   window.scrollTo(0,0); renderTab();

@@ -1433,7 +1433,7 @@ function renderAkuisisi(){
 
 
 /* ------------------------------------------------------------------ Ringkasan KPI (Overview) */
-let KC_PROD = "edc", KC_LAST = null;
+let KC_PROD = "edc", KC_LAST = null, KC_JR = "";
 const kcBadge = (c, p, unit="%") => {            // pertumbuhan YoY -> {cls, txt}
   if (unit === "pp"){ if (c==null || p==null) return null; const d = (c-p)*100; return {cls:d>=0?"up":"down", txt:`${d>=0?"▲":"▼"} ${d>=0?"+":""}${d.toLocaleString("id-ID",{minimumFractionDigits:2,maximumFractionDigits:2})} pp YoY`}; }
   const g = gr(c,p); return g==null ? null : {cls:g>=0?"up":"down", txt:`${g>=0?"▲":"▼"} ${fP(Math.abs(g))} YoY`};
@@ -1451,24 +1451,37 @@ function kpiCardsData(){
   const E = D.edc, A = D.atm, W = `W${E.week} ${E.year}`;
   const scope = AREA ? title(AREA) : "Region XI";
   if (KC_PROD === "edc"){
-    const s = edcSummary(AREA), I = Object.fromEntries(E.cols.map((c,i)=>[c,i]));
-    const seg = {};
-    for (const r of E.cube) if (!AREA || r[0]===AREA){ const o = seg[r[2]] || (seg[r[2]] = {}); for (const k of ["sv","svp","tx","txp","md","mdp","fd","fdp","merch","edc"]) o[k] = (o[k]||0) + r[I[k]]; }
+    const ME = ["sv","svp","tx","txp","md","mdp","fd","fdp","merch","edc","cff","cfp","one"];
+    const add = (o, r) => { ME.forEach((k,i) => o[k] = (o[k]||0) + r[3+i]); return o; };
+    let s, seg = {}, fj = {}, rows = null;
+    if (E.ecube){
+      const ec = E.ecube.filter(r => !AREA || r[0]===AREA);
+      for (const r of ec) add(fj[r[2]] || (fj[r[2]] = {}), r);              // tabel jenis rekening selalu lengkap
+      if (KC_JR && !fj[KC_JR]) KC_JR = "";
+      const f = ec.filter(r => !KC_JR || r[2]===KC_JR);
+      s = {}; for (const r of f){ add(s, r); add(seg[r[1]] || (seg[r[1]] = {}), r); }
+      for (const k of ME) s[k] = s[k] || 0;
+      rows = s.one;
+    } else {                                                               // data lama tanpa kubus jenis rekening
+      s = edcSummary(AREA); const I = Object.fromEntries(E.cols.map((c,i)=>[c,i]));
+      for (const r of E.cube) if (!AREA || r[0]===AREA){ const o = seg[r[2]] || (seg[r[2]] = {}); for (const k of ["sv","svp","tx","txp","md","mdp","fd","fdp","merch","edc"]) o[k] = (o[k]||0) + r[I[k]]; }
+      for (const [a,j,v,vp,n,nf] of E.fundj || []) if (!AREA || a===AREA){ const o = fj[j] || (fj[j] = {fd:0,fdp:0,cff:0,cfp:0}); o.fd+=v; o.fdp+=vp; o.cff+=n||0; o.cfp+=nf||0; }
+    }
     const B = (val, fmt, cur, prev, unit) => kcBreak(seg, val, fmt, cur ? (o => kcShort(kcBadge(cur(o), prev(o), unit))) : null);
-    const fj = {}; for (const [a,j,v,vp,n,nf] of E.fundj || []) if (!AREA || a===AREA){ const o = fj[j] || (fj[j] = {v:0,vp:0,n:0,nf:0}); o.v+=v; o.vp+=vp; o.n+=n||0; o.nf+=nf||0; }
+    const jrTxt = KC_JR ? `, rekening ${KC_JR}` : "";
     const fts = s.sv ? s.fd/(s.sv*52/E.week) : null, ftsp = s.svp ? s.fdp/(s.svp*52/E.week) : null;
-    const rows = Object.values(E.nrows || {}).length ? (AREA ? (E.nrows[AREA]||0) : sum(Object.values(E.nrows), v=>v)) : null;
     const tk = s.tx ? s.sv/s.tx : 0, tkp = s.txp ? s.svp/s.txp : 0, mdr = s.sv ? s.md/s.sv : null, mdrp = s.svp ? s.mdp/s.svp : null;
     const pct2 = v => (v*100).toLocaleString("id-ID",{minimumFractionDigits:2,maximumFractionDigits:2})+"%";
-    const nRek = sum(Object.values(fj), o=>o.n);
-    return {info:`${rows!=null?fN(rows)+" baris rekening, ":""}${scope}`, file:`ringkasan_kpi_echannel_${W.replace(" ","_")}`, cards:[
+    const fsel = KC_JR ? (fj[KC_JR] || {}) : null;
+    const nRek = fsel ? fsel.cff||0 : sum(Object.values(fj), o=>o.cff||0), nRekF = fsel ? fsel.cfp||0 : sum(Object.values(fj), o=>o.cfp||0);
+    return {info:`${rows!=null?fN(rows)+" baris, ":""}${scope}${jrTxt}`, jr:KC_JR, file:`ringkasan_kpi_echannel_${W.replace(" ","_")}${KC_JR?"_"+KC_JR.toLowerCase():""}`, cards:[
       {l:"Total sales volume", v:fNum(s.sv), sub:`YTD ${W}`, b:kcBadge(s.sv,s.svp), lt:"Per segmen", list:B(o=>o.sv, fNum, o=>o.sv, o=>o.svp)},
       {l:"Total frekuensi", v:fNum(s.tx), sub:`YTD ${W}`, b:kcBadge(s.tx,s.txp), lt:"Per segmen", list:B(o=>o.tx, fNum, o=>o.tx, o=>o.txp)},
       {l:"Total fee based income", v:fNum(s.md), sub:`YTD ${W} (MDFG)`, b:kcBadge(s.md,s.mdp), lt:"Per segmen", list:B(o=>o.md, fNum, o=>o.md, o=>o.mdp)},
       {l:"Total average balance", v:fNum(s.fd), sub:`Posisi ${W}, Count For Funding = 1. FTS ${fP(fts)} (${ftsp!=null?((fts-ftsp)*100>=0?"+":"")+((fts-ftsp)*100).toLocaleString("id-ID",{maximumFractionDigits:2})+" pp YoY":"–"})`, b:kcBadge(s.fd,s.fdp),
-       lt:"Per jenis rekening", tbl:{h:["Jenis","Rek.","Saldo","YoY"], rows:Object.entries(fj).filter(([,o])=>o.v||o.vp||o.n).sort((x,y)=>y[1].v-x[1].v)
-         .map(([j,o]) => [j, fN(o.n), fNum(o.v), kcShort(kcBadge(o.v,o.vp))]),
-         note:`Total ${fN(nRek)} rekening (Count For Funding = 1), ${fN(sum(Object.values(fj),o=>o.nf))} di antaranya bersaldo. Rata-rata ${fNum(nRek ? s.fd/nRek : 0)} per rekening.`}},
+       lt:"Per jenis rekening, klik untuk filter", tbl:{h:["Jenis","Rek.","Saldo","YoY"], rows:Object.entries(fj).filter(([,o])=>o.fd||o.fdp||o.cff).sort((x,y)=>y[1].fd-x[1].fd)
+         .map(([j,o]) => [j, fN(o.cff||0), fNum(o.fd), kcShort(kcBadge(o.fd,o.fdp))]),
+         note:`${KC_JR?`Filter ${KC_JR}: `:"Total "}${fN(nRek)} rekening (Count For Funding = 1), ${fN(nRekF)} di antaranya bersaldo. Rata-rata ${fNum(nRek ? s.fd/nRek : 0)} per rekening.`}},
       {l:"Merchant aktif (MID)", v:fN(s.merch), sub:`Snapshot ${W}, merch = 1`, lt:"Per segmen", list:B(o=>o.merch, fN)},
       {l:"Jumlah EDC", v:fN(s.edc), sub:`Snapshot ${W}`, lt:"Per segmen", list:B(o=>o.edc, fN)},
       {l:"Average ticket size", v:"Rp "+fN(Math.round(tk)), sub:`YTD ${W}, SV ÷ frekuensi`, b:kcBadge(tk,tkp), lt:"Per segmen (Rp)", list:B(o=>o.tx?o.sv/o.tx:null, v=>fN(Math.round(v)), o=>o.tx?o.sv/o.tx:null, o=>o.txp?o.svp/o.txp:null)},
@@ -1517,7 +1530,7 @@ function kpiCardsData(){
 }
 function renderKpiCards(){
   const K = KC_LAST = kpiCardsData();
-  $("kcInfo").textContent = K.info;
+  $("kcInfo").innerHTML = esc(K.info) + (K.jr ? ` <button class="kc-reset" id="kcReset" title="Hapus filter jenis rekening">Semua rekening ✕</button>` : "");
   document.querySelectorAll("#kcProd button").forEach(b => { b.classList.toggle("on", b.dataset.p===KC_PROD); b.setAttribute("aria-selected", b.dataset.p===KC_PROD); });
   const badge = b => b ? `<span class="kc-b ${b.cls}">${esc(b.txt)}</span>` : "";
   const mini = b => b ? `<i class="${b.cls}">${esc(b.txt)}</i>` : "<i></i>";
@@ -1525,7 +1538,7 @@ function renderKpiCards(){
       <div class="kc-l">${esc(c.l)}</div><div class="kc-v">${esc(c.v)}</div><div class="kc-s">${esc(c.sub||"")}</div>${badge(c.b)}
       ${c.list && c.list.length ? `<div class="kc-list"><div class="kc-lt">${esc(c.lt||"")}</div>${c.list.map(x=>`<div><span title="${esc(x.l)}">${esc(x.l)}</span><b>${esc(x.v)}</b>${mini(x.b)}</div>`).join("")}</div>` : ""}
       ${c.tbl ? `<div class="kc-list"><div class="kc-lt">${esc(c.lt||"")}</div><table class="kc-tbl"><thead><tr>${c.tbl.h.map((h,i)=>`<th${i?' class="n"':""}>${esc(h)}</th>`).join("")}</tr></thead>
-        <tbody>${c.tbl.rows.map(r=>`<tr><td>${esc(r[0])}</td><td class="n">${esc(r[1])}</td><td class="n"><b>${esc(r[2])}</b></td><td class="n">${mini(r[3])}</td></tr>`).join("")}</tbody></table>
+        <tbody>${c.tbl.rows.map(r=>`<tr class="kc-jr${K.jr===r[0]?" on":""}" data-jr="${esc(r[0])}" tabindex="0" role="button" aria-pressed="${K.jr===r[0]}" title="${K.jr===r[0]?"Klik lagi untuk menampilkan semua jenis rekening":"Filter semua KPI e-Channel ke rekening "+esc(r[0])}"><td>${esc(r[0])}</td><td class="n">${esc(r[1])}</td><td class="n"><b>${esc(r[2])}</b></td><td class="n">${mini(r[3])}</td></tr>`).join("")}</tbody></table>
         ${c.tbl.note?`<div class="kc-note">${esc(c.tbl.note)}</div>`:""}</div>` : ""}
     </div>`).join("");
 }
@@ -1580,6 +1593,10 @@ function kcDownloadPng(){
 }
 $("kcProd").addEventListener("click", e => { const b = e.target.closest("button[data-p]"); if (!b) return; KC_PROD = b.dataset.p; renderKpiCards(); });
 $("kcXls").addEventListener("click", kcDownloadXls);
+const kcPickJr = el => { const tr = el.closest("[data-jr]"); if (!tr) return false; KC_JR = KC_JR === tr.dataset.jr ? "" : tr.dataset.jr; renderKpiCards(); const n = document.querySelector(`#kcGrid [data-jr="${CSS.escape(tr.dataset.jr)}"]`) || $("kcGrid"); n.focus && n.focus(); return true; };
+$("kcGrid").addEventListener("click", e => kcPickJr(e.target));
+$("kcGrid").addEventListener("keydown", e => { if ((e.key==="Enter" || e.key===" ") && kcPickJr(e.target)) e.preventDefault(); });
+$("kcInfo").addEventListener("click", e => { if (e.target.id === "kcReset"){ KC_JR = ""; renderKpiCards(); } });
 $("kcPng").addEventListener("click", kcDownloadPng);
 
 const RENDER = {ringkasan:renderSummary, atm:renderATM, edc:renderEDC, lvm:renderLVM, cabang:renderCabang, merchant:renderMerchant, users:renderUsers, wpr:renderWPR, duta:renderDuta, usak:renderUsak, senator:renderSenator, akuisisi:renderAkuisisi};

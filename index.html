@@ -41,6 +41,12 @@
         <div><b>Foto profil</b><span>Opsional. JPG atau PNG, akan diperkecil otomatis.</span>
           <input id="suFoto" type="file" accept="image/*"></div>
       </div>
+      <label for="suPeran">Jenis pengguna</label>
+      <select id="suPeran">
+        <option value="user">Pegawai Bank Mandiri</option>
+        <option value="yokke">Marketing Yokke</option>
+        <option value="outbranch">Outbranch</option>
+      </select>
       <label for="suNama">Nama pegawai</label>
       <input id="suNama" type="text" required maxlength="80">
       <label for="suJabatan">Jabatan</label>
@@ -97,7 +103,7 @@
   <div class="main">
     <header class="head">
       <div>
-        <h1 id="pageTitle">Overview</h1>
+        <div class="ttl-row"><h1 id="pageTitle">Overview</h1><span id="headBtn"></span></div>
         <p id="pageSub"></p>
       </div>
       <div class="area-pills" id="areaPills" role="group" aria-label="Filter area"></div>
@@ -214,6 +220,43 @@
       </div>
     </section>
 
+    <!-- DUTA TRANSAKSI (bagian dari Overview) -->
+    <section class="tab" id="tab-duta" hidden>
+      <div class="kpis" id="dtKpis"></div>
+      <div class="grid g21">
+        <div class="panel"><div class="panel-head"><h3>Pegawai On Us minimal 90% per unit bisnis</h3><p>Persentase pegawai yang 90% atau lebih transaksinya On Us. Hijau: minimal 90%; kuning: 80–89%; merah: di bawah 80%</p></div><div class="chart tall"><div id="cDtArea" class="mc"></div></div></div>
+        <div class="panel"><div class="panel-head"><h3>Komposisi transaksi</h3><p>Frekuensi On Us dan Off Us selama program</p></div><div class="pie"><div id="cDtPie" class="mc"></div></div></div>
+      </div>
+      <div class="panel"><div class="panel-head"><h3 id="dtBotT">Bottom 5 unit kerja pegawai On Us 90%</h3><p>Unit kerja dengan persentase pegawai On Us minimal 90% paling rendah</p></div><div class="grid g4 bot-grid" id="dtBottom"></div></div>
+      <div class="panel"><div class="panel-head"><h3>Per unit kerja</h3><p>Klik judul kolom untuk mengurutkan</p></div><div id="tDtUnit"></div></div>
+      <div class="panel rank-panel">
+        <div class="panel-head rank-head"><div><h3>Per pegawai</h3><p>Kebutuhan tambahan = jumlah transaksi On Us yang masih dibutuhkan agar mencapai 90%</p></div>
+          <div class="rank-ctl"><label>Status <select id="dtStat"><option value="">Semua pegawai</option><option value="0">Belum 90%</option><option value="1">Sudah 90%</option><option value="np">Belum partisipasi</option></select></label></div></div>
+        <div id="tDtPeg"></div>
+      </div>
+      <div class="panel notes" id="dtNotes"></div>
+    </section>
+
+    <!-- DASHBOARD USAK (bagian dari Livin' Merchant) -->
+    <section class="tab" id="tab-usak" hidden>
+      <div class="filters">
+        <label>Cabang <select id="usCab"></select></label>
+      </div>
+      <div class="kpis" id="usKpis"></div>
+      <div class="grid g2">
+        <div class="panel"><div class="panel-head"><h3 id="usChT">USAK per area</h3><p>Merchant diakuisisi (UREG), sudah USAK, dan target realisasi 70%</p></div><div class="chart"><div id="cUsArea" class="mc"></div></div></div>
+        <div class="panel"><div class="panel-head"><h3>USAK per prioritas pipeline</h3><p>Setiap prioritas punya gate USAK yang berbeda (lihat keterangan)</p></div><div class="chart"><div id="cUsPrio" class="mc"></div></div></div>
+      </div>
+      <div class="panel"><div class="panel-head"><h3>Per unit kerja pengakuisisi</h3><p>Diurutkan dari GAP terbesar. GAP = USAK dikurangi target 70% dari UREG. Klik baris untuk memfilter cabang.</p></div><div id="tUsCab"></div></div>
+      <div class="panel"><div class="panel-head"><h3>Per pegawai</h3><p>Pegawai yang mengakuisisi merchant Livin' selama fase ini</p></div><div id="tUsPeg"></div></div>
+      <div class="panel rank-panel">
+        <div class="panel-head rank-head"><div><h3>Merchant belum USAK</h3><p>Diurutkan dari yang paling dekat ke gate USAK. Klik baris untuk melihat performance lengkap di Pencarian.</p></div>
+          <div class="rank-ctl"><label>Prioritas <select id="usPrio"><option value="">Semua</option><option value="1">Prio 1</option><option value="2">Prio 2</option><option value="3">Prio 3</option></select></label></div></div>
+        <div id="tUsMer"></div>
+      </div>
+      <div class="panel notes" id="usNotes"></div>
+    </section>
+
     <!-- CARI MERCHANT -->
     <section class="tab" id="tab-merchant" hidden>
       <div class="ms-modes" id="msModes" role="tablist" aria-label="Jenis produk"></div>
@@ -235,7 +278,7 @@
         <label>Status <select id="usStatus"><option value="">Semua</option><option value="menunggu" selected>Menunggu persetujuan</option><option value="aktif">Aktif</option><option value="nonaktif">Nonaktif</option></select></label>
         <button class="btn-sm" id="usReload">Muat ulang</button>
       </div>
-      <div class="panel"><div class="panel-head"><h3>Daftar pengguna</h3><p>Setujui pendaftaran dengan mengubah status menjadi Aktif, pilih akses (seluruh Region atau satu area), lalu klik Simpan.</p></div><div id="usList"></div></div>
+      <div class="panel"><div class="panel-head"><h3>Daftar pengguna</h3><p>Setujui pendaftaran dengan mengubah status menjadi Aktif, pilih akses (seluruh Region atau satu area) dan peran, lalu klik Simpan. Peran <b>Pengguna</b> dan <b>Admin</b> membuka seluruh dashboard; <b>Marketing Yokke</b> dan <b>Outbranch</b> hanya bisa membuka menu Pencarian merchant (EDC &amp; E-Commerce dan Livin' Merchant).</p></div><div id="usList"></div></div>
     </section>
 
     <!-- WPR -->

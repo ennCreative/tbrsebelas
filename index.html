@@ -239,6 +239,21 @@
       </div>
     </section>
 
+    <!-- REASON SV DROP (bagian dari Overview) -->
+    <section class="tab" id="tab-reason" hidden>
+      <div class="filters">
+        <label>Cabang <select id="rsCab"></select></label>
+        <label>Kategori <select id="rsKat"></select></label>
+      </div>
+      <div class="kpis" id="rsKpis"></div>
+      <div class="grid g21">
+        <div class="panel"><div class="panel-head"><h3>Cakupan reason per cabang</h3><p id="rsCovP">Merchant Top 20 SV drop per cabang yang sudah diisi reason. Klik baris untuk memfilter cabang.</p></div><div id="tRsCov"></div></div>
+        <div class="panel"><div class="panel-head"><h3>Kategori alasan</h3><p>Reason terbaru per merchant</p></div><div id="cRsKat" class="rs-bars"></div></div>
+      </div>
+      <div class="panel"><div class="panel-head"><h3>Reason yang sudah diinput</h3><p>Reason terbaru per merchant; SV dan YoY mengikuti data minggu terakhir. Klik baris untuk melihat riwayat, menambah, atau mengubah reason.</p></div><div id="tRsList"></div></div>
+      <div class="panel"><div class="panel-head"><h3>Top 20 SV drop yang belum ada reason</h3><p>Klik baris untuk mengisi reason</p></div><div id="tRsTodo"></div></div>
+    </section>
+
     <!-- DUTA TRANSAKSI (bagian dari Overview) -->
     <section class="tab" id="tab-duta" hidden>
       <div class="kpis" id="dtKpis"></div>
@@ -364,6 +379,10 @@
 
 <button id="toTop" class="to-top" aria-label="Kembali ke atas" title="Kembali ke atas">↑</button>
 <div id="loading" class="loading" hidden><div class="spin"></div><span>Membuka data…</span></div>
+<dialog id="mDlg" class="mdlg" aria-labelledby="mDlgT">
+  <div class="mdlg-head"><div><h3 id="mDlgT"></h3><p id="mDlgS"></p></div><button class="mdlg-x" id="mDlgX" aria-label="Tutup">✕</button></div>
+  <div id="mDlgBody"></div>
+</dialog>
 <script src="assets/config.js"></script>
 <script src="assets/charts.js"></script>
 <script src="assets/app.js"></script>

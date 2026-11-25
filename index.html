@@ -125,9 +125,18 @@
     <!-- OVERVIEW -->
     <section class="tab" id="tab-ringkasan">
       <div class="asof" id="sumAsOf"></div>
-      <div class="panel board-panel">
-        <div class="panel-head"><h3>Financial Highlight</h3><p>Angka di atas adalah nilai, persen di bawah adalah pertumbuhan atau pencapaian target. Hijau: tumbuh atau target tercapai; kuning: 80–99% target; merah: turun atau di bawah 80% target.</p></div>
-        <div id="sumBoard" class="board-wrap"></div>
+      <div class="panel kc-panel">
+        <div class="kc-head">
+          <div><h3>Ringkasan KPI</h3><p id="kcInfo"></p></div>
+          <div class="kc-tools">
+            <div class="seg" id="kcProd" role="tablist" aria-label="Produk">
+              <button data-p="edc" class="on" role="tab">EDC &amp; E-Commerce</button><button data-p="atm" role="tab">ATM &amp; CRM</button><button data-p="lvm" role="tab">Livin' Merchant</button>
+            </div>
+            <button class="kc-dl" id="kcXls" title="Unduh ringkasan sebagai file Excel">Excel</button>
+            <button class="kc-dl" id="kcPng" title="Unduh ringkasan sebagai gambar">PNG</button>
+          </div>
+        </div>
+        <div class="kc-grid" id="kcGrid"></div>
       </div>
       <div class="products" id="sumProducts"></div>
       <div class="panel rank-panel">

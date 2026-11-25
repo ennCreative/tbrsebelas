@@ -464,3 +464,11 @@ small.muted{display:block;color:var(--muted);font-size:11.5px}
   .nav-sub{flex-direction:row;margin:0;padding:0;border:0}
   .side-nav .nav-sub button{white-space:nowrap}
 }
+.bot ol.nonum li{grid-template-columns:1fr auto}
+.bot ol.nonum li::before{content:none}
+.bot ol.nonum li small{grid-column:1/3}
+a.map-a{color:var(--data);text-decoration:none;font-weight:600}
+a.map-a:hover{text-decoration:underline}
+.rank-ctl{display:flex;gap:12px;flex-wrap:wrap}
+.bot ol.cols2{columns:2;column-gap:24px}
+.bot ol.cols2 li{break-inside:avoid}

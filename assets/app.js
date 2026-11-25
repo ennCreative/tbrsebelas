@@ -55,7 +55,7 @@ function loadBox(name){            // file data terenkripsi tambahan, dimuat saa
   if (BOX[name]) return Promise.resolve(BOX[name]);
   if (!BOX_P[name]) BOX_P[name] = fetch(`data/${name}.enc.json?t=`+Date.now(),{cache:"no-store"})
     .then(r => { if (!r.ok) throw new Error(`file data/${name}.enc.json tidak ditemukan`); return r.json(); })
-    .then(box => openBox(name === "wpr" ? DK : DK2, box))
+    .then(box => openBox(["merchant","lvm"].includes(name) ? DK2 : DK, box))
     .then(m => { BOX[name] = m; return m; })
     .catch(e => { delete BOX_P[name]; throw e; });
   return BOX_P[name];
@@ -1342,9 +1342,129 @@ function renderUsak(){
   $("usNotes").innerHTML = `<h3>Keterangan</h3><ol>${U.gates.map(g=>`<li>${esc(g)}</li>`).join("")}<li>Target realisasi = 70% dari jumlah merchant UREG; GAP negatif berarti USAK masih di bawah target.</li></ol><p class="note">Sumber: ${esc(U.file)}</p>`;
 }
 
-const RENDER = {ringkasan:renderSummary, atm:renderATM, edc:renderEDC, lvm:renderLVM, cabang:renderCabang, merchant:renderMerchant, users:renderUsers, wpr:renderWPR, duta:renderDuta, usak:renderUsak};
+
+/* ================================================================== SENATOR */
+const SN_ROW = c => ({kd:c[0], nm:c[1], kl:c[2]||"–", a:c[3], pic:c[4], uni:c[5], gold:c[6], pg:c[5]?c[6]/c[5]:Infinity, sep:c[7], okt:c[8], w1:c[9], w2:c[10],
+  cbg:c[11], usak:c[12], pu:c[11]?c[12]/c[11]:null, fr:c[13], sv:c[14], fbi:c[15], cap:c[21], fu:c[22]});
+const pctPlain = (p, good=.5) => `<span class="${p==null?"":p>=good?"good":p>=good*.8?"mid":"bad"}">${fP(p)}</span>`;
+function botList(el, titleTxt, rows, val, sub){
+  el.innerHTML = `<h4>${esc(titleTxt)}</h4><ol>${rows.map(r => `<li><span>${esc(r.nm)}</span><b class="bad">${val(r)}</b><small>${sub(r)}</small></li>`).join("") || "<li>Tidak ada data</li>"}</ol>`;
+}
+function renderSenator(){
+  const S = D.senator;
+  if (!S){ $("snKpis").innerHTML = `<p class="note">File Dashboard Monitoring Senator belum ada di folder data.</p>`; return; }
+  const rows = S.cab.filter(c => inArea(c[3])).map(SN_ROW);
+  const t = k => sum(rows, r => r[k]);
+  const uni = t("uni"), gold = t("gold"), cbg = t("cbg"), usak = t("usak");
+  const g = gr(t("w2"), t("okt"));
+  $("snKpis").innerHTML =
+    kpi("Universe Senator", fN(uni), `${fN(rows.length)} cabang`) +
+    kpi("Klaim Gold", fN(gold), `${fP(uni?gold/uni:0)} dari universe<br>${fN(uni-gold)} masih Blue`, "", uni?gold/uni:null) +
+    kpi(`Klaim Gold ${S.plbl[3]||""}`, fN(t("w2")), `${growthTag(g)} dibanding ${S.plbl[1]||"bulan lalu"} (${fN(t("okt"))})`) +
+    kpi("Akuisisi CBG", fN(cbg), `Sales volume YTD ${fRp(t("sv"))}`) +
+    kpi("USAK LVM Senator", fN(usak), `${pctPlain(cbg?usak/cbg:null)} dari akuisisi CBG`, "", cbg?usak/cbg:null);
+
+  chart("cSnProg", {labels:S.plbl, fmt:fN, series:[S_("Klaim Gold", [t("sep"), t("okt"), t("w1"), t("w2")], C.s4)]});
+  const grp = {}; const key = AREA ? (r => r.nm) : (r => r.a);
+  for (const r of rows){ const o = grp[key(r)] || (grp[key(r)] = {uni:0,gold:0,cbg:0,usak:0}); o.uni+=r.uni; o.gold+=r.gold; o.cbg+=r.cbg; o.usak+=r.usak; }
+  let gl = Object.keys(grp);
+  if (AREA) gl = gl.sort((x,y)=>grp[y].uni-grp[x].uni).slice(0,12); else gl.sort((x,y)=>(D.areas.indexOf(x)+1||99)-(D.areas.indexOf(y)+1||99));
+  $("snAreaT").textContent = AREA ? `Klaim Gold dan USAK, 12 cabang universe terbesar ${title(AREA)}` : "Klaim Gold dan USAK per area";
+  chart("cSnArea", {labels:gl.map(x => AREA ? x : title(x).replace("Area ","")), fmt:fP, values:fP, series:[
+    S_("% klaim Gold", gl.map(x => grp[x].uni ? grp[x].gold/grp[x].uni : 0), C.s4), S_("% USAK", gl.map(x => grp[x].cbg ? grp[x].usak/grp[x].cbg : 0), C.s3)]});
+
+  botList($("snBotGold"), "Klaim Gold terendah", rows.filter(r=>r.uni>0).sort((a,b)=>a.pg-b.pg).slice(0,10), r=>fP(r.pg), r=>`${fN(r.gold)} dari ${fN(r.uni)} universe`);
+  botList($("snBotUsak"), "USAK Senator terendah", rows.filter(r=>r.cbg>0).sort((a,b)=>a.pu-b.pu).slice(0,10), r=>fP(r.pu), r=>`${fN(r.usak)} dari ${fN(r.cbg)} akuisisi CBG`);
+
+  table($("tSnCab"), {csv:"senator_cabang", sort:"pg", dir:1, page:15, rows, rowKey:x=>x.kd, onRow:k => { $("snCab").value = k; $("snUniPanel").scrollIntoView({behavior:"smooth"}); renderSenatorUni(); }, cols:[
+    {k:"a",l:"Area",f:a=>title(a).replace("Area ","")}, {k:"kl",l:"Kelas"}, {k:"kd",l:"Kode"}, {k:"nm",l:"Cabang"}, {k:"pic",l:"PIC"},
+    {k:"uni",l:"Universe",num:1,f:fN}, {k:"gold",l:"Gold",num:1,f:fN}, {k:"pg",l:"% Gold",num:1,f:p=>pctPlain(p,.15)},
+    {k:"okt",l:S.plbl[1]||"Bulan lalu",num:1,f:fN}, {k:"w2",l:S.plbl[3]||"Terakhir",num:1,f:fN},
+    {k:"cbg",l:"Akuisisi CBG",num:1,f:fN}, {k:"usak",l:"USAK",num:1,f:fN}, {k:"pu",l:"% USAK",num:1,f:p=>pctPlain(p)}, {k:"sv",l:"SV YTD",num:1,f:fC}, {k:"fu",l:"Follow up",num:1,f:fN}],
+    foot: r => { const s_ = k => sum(r,x=>x[k]); return ["","","","Total","",fN(s_("uni")),fN(s_("gold")),pctPlain(s_("uni")?s_("gold")/s_("uni"):null,.15),fN(s_("okt")),fN(s_("w2")),fN(s_("cbg")),fN(s_("usak")),pctPlain(s_("cbg")?s_("usak")/s_("cbg"):null),fC(s_("sv")),fN(s_("fu"))]; }});
+
+  const sel = $("snCab"), cur = sel.value;
+  sel.innerHTML = `<option value="">Semua cabang${AREA?` ${title(AREA)}`:""}</option>` + [...rows].sort((a,b)=>a.nm.localeCompare(b.nm)).map(r => `<option value="${r.kd}">${esc(r.nm)} (${r.kd})</option>`).join("");
+  sel.value = rows.some(r => r.kd===cur) ? cur : "";
+  renderSenatorUni();
+  $("snNotes").innerHTML = `<h3>Catatan</h3><ol>${S.notes.map(n=>`<li>${esc(n)}</li>`).join("")}<li>Posisi data Senator ${esc(S.posisi)}${S.cbg?`; akuisisi CBG ${esc(S.cbg)}`:""}.</li></ol><p class="note">Sumber: ${esc(S.file)}</p>`;
+}
+async function renderSenatorUni(){
+  const el = $("tSnUni");
+  if (!BOX.senator){
+    $("snUniInfo").textContent = "Menyiapkan daftar merchant universe…";
+    try { await loadBox("senator"); } catch(e){ $("snUniInfo").textContent = "Daftar merchant universe belum tersedia."; return; }
+    if (TAB !== "senator") return;
+    $("snUniInfo").textContent = "Merchant di sekitar cabang. Klik nama untuk membuka lokasinya di Google Maps.";
+  }
+  const cab = $("snCab").value, st = $("snStat").value;
+  const nm = Object.fromEntries(D.senator.cab.map(c => [c[0], c[1]])), ar = Object.fromEntries(D.senator.cab.map(c => [c[0], c[3]]));
+  const rows = BOX.senator.u.filter(u => (cab ? u[1]===cab : inArea(ar[u[1]])) && (st==="" || String(u[2])===st))
+    .map(u => ({nm:u[0], kd:u[1], cb:nm[u[1]]||u[1], g:u[2], ty:u[3], al:u[4], pid:u[5], mid:u[6]}));
+  el._st = el._st && el._st.key === cab+"|"+st ? el._st : null;
+  table(el, {csv:"universe_senator", sort:"g", dir:1, page:15, rows, cols:[
+    {k:"nm",l:"Nama merchant",f:(v,x)=>x.pid?`<a class="map-a" href="https://www.google.com/maps/place/?q=place_id:${encodeURIComponent(x.pid)}" target="_blank" rel="noopener">${esc(v)}</a>`:esc(v)},
+    {k:"ty",l:"Jenis usaha"}, {k:"al",l:"Alamat",f:v=>`<span class="addr" title="${esc(v)}">${esc(v)}</span>`}, {k:"cb",l:"Cabang"},
+    {k:"g",l:"Status",f:(v,x)=>v?`<span class="tag good">Gold</span>${x.mid?` <small class="muted">MID ${esc(x.mid)}</small>`:""}`:`<span class="tag mid">Blue</span>`}]});
+  el._st.key = cab+"|"+st;
+}
+
+/* ================================================================== AKUISISI EDC */
+function renderAkuisisi(){
+  const Q = D.akuisisi;
+  if (!Q){ $("aqKpis").innerHTML = `<p class="note">File Dashboard Akuisisi EDC belum ada di folder data.</p>`; return; }
+  const kls = [...new Set(Q.cab.map(c => c[2]).filter(Boolean))].sort();
+  const ks = $("aqKelas"), kv = ks.value;
+  ks.innerHTML = `<option value="">Semua</option>` + kls.map(k => `<option>${esc(k)}</option>`).join(""); ks.value = kls.includes(kv) ? kv : "";
+  const dt = new Date(Q.posisi), mi = isNaN(dt) ? Q.months.length-2 : dt.getMonth()+1;   // indeks bulan berjalan pada deret (0 = Des tahun lalu)
+  const mName = Q.months[mi] || "MTD", dStr = isNaN(dt) ? Q.posisi : `${dt.getDate()} ${BLN[dt.getMonth()]} ${dt.getFullYear()}`;
+  // cab: [kode, nama, kelas, area, months[13], nihilBln, mtdReg, mtdAob, mtd, tgtMtd, close, nett, tgtYtd, frek, sv, fbi, avbal, newCif]
+  const rows = Q.cab.filter(c => inArea(c[3]) && (!ks.value || c[2]===ks.value)).map(c => ({kd:c[0], nm:c[1], kl:c[2]||"–", a:c[3], m:c[4], nb:c[5],
+    reg:c[6], aob:c[7], mtd:c[8], tm:c[9], pm:c[9]?c[8]/c[9]:null, gm:c[8]-c[9], cl:c[10], net:c[11], ty:c[12], py:c[12]?c[11]/c[12]:null, gy:c[11]-c[12],
+    gross:c[4].slice(1, mi+1).reduce((x,y)=>x+y,0), fr:c[13], sv:c[14], fbi:c[15], cif:c[17]}));
+  const t = k => sum(rows, r => r[k]);
+  const nihil = rows.filter(r => r.mtd === 0);
+  $("aqKpis").innerHTML =
+    kpi(`Akuisisi MTD ${mName}`, fN(t("mtd")), `${pctHtml(t("tm")?t("mtd")/t("tm"):null)} dari target ${fN(t("tm"))}<br>GAP ${fN(t("mtd")-t("tm"))}`, "", t("tm")?t("mtd")/t("tm"):null) +
+    kpi("Nett akuisisi YTD", fN(t("net")), `${pctHtml(t("ty")?t("net")/t("ty"):null)} dari target ${fN(t("ty"))}<br>GAP ${fN(t("net")-t("ty"))}`, "", t("ty")?t("net")/t("ty"):null) +
+    kpi("Akuisisi YTD (gross)", fN(t("gross")), `${fN(t("cl"))} EDC close YTD`) +
+    kpi("Sales volume YTD", fRp(t("sv")), `FBI YTD ${fRp(t("fbi"))}`) +
+    kpi("Cabang nihil MTD", fN(nihil.length), `dari ${fN(rows.length)} cabang`);
+
+  const labels = Q.months.slice(0, mi+1);
+  chart("cAqMon", {labels, fmt:fN, series:[S_("Akuisisi", labels.map((_,i) => sum(rows, r => r.m[i])), labels.map((_,i)=> i===mi ? C.s2 : i===0 ? C.prev : C.s1))]});
+  const grp = {}; const key = AREA ? (r => r.nm) : (r => r.a);
+  for (const r of rows){ const o = grp[key(r)] || (grp[key(r)] = {m:0,t:0}); o.m += r.mtd; o.t += r.tm; }
+  let gl = Object.keys(grp);
+  if (AREA) gl = gl.sort((x,y)=>grp[y].t-grp[x].t).slice(0,12); else gl.sort((x,y)=>(D.areas.indexOf(x)+1||99)-(D.areas.indexOf(y)+1||99));
+  $("aqAreaT").textContent = AREA ? `Akuisisi MTD, 12 cabang target terbesar ${title(AREA)}` : "Akuisisi MTD per area";
+  chart("cAqArea", {labels:gl.map(x => AREA ? x : title(x).replace("Area ","")), fmt:fN, series:[S_("Target MTD", gl.map(x=>grp[x].t), C.prev), S_("Akuisisi MTD", gl.map(x=>grp[x].m), C.s1)]});
+
+  const byK = {}; for (const r of rows) (byK[r.kl] || (byK[r.kl] = [])).push(r);
+  const kk = Object.keys(byK).sort();
+  const line = r => `<li><span>${esc(r.kl)} · ${esc(r.nm)}</span><b class="${pctCls(r.pm)}">${fP(r.pm)}</b><small>${fN(r.mtd)} dari target ${fN(r.tm)}, GAP ${fN(r.gm)}</small></li>`;
+  const ord = (a,b) => (a.pm??-1)-(b.pm??-1) || a.mtd-b.mtd;
+  $("aqKelasBox").innerHTML =
+    `<div class="bot"><h4>Tertinggi per kelas</h4><ol class="nonum">${kk.map(k => line([...byK[k]].sort(ord).pop())).join("")}</ol></div>` +
+    `<div class="bot"><h4>Terendah per kelas</h4><ol class="nonum">${kk.map(k => line([...byK[k]].sort(ord)[0])).join("")}</ol></div>`;
+
+  const n3 = rows.filter(r => mi >= 3 && r.m[mi]===0 && r.m[mi-1]===0 && r.m[mi-2]===0);
+  $("aqNihilP").textContent = `Posisi ${dStr}`;
+  const chip = r => `<li><span>${esc(r.nm)}</span><b>${esc(r.kl)}</b><small>${title(r.a)}</small></li>`;
+  $("aqNihil").innerHTML = `<div class="bot"><h4>Nihil MTD ${esc(mName)} (${nihil.length})</h4><ol class="nonum cols2">${nihil.map(chip).join("") || "<li>Tidak ada</li>"}</ol></div>` +
+    `<div class="bot"><h4>Nihil 3 bulan terakhir, ${esc(Q.months[mi-2]||"")}–${esc(mName)} (${n3.length})</h4><ol class="nonum cols2">${n3.map(chip).join("") || "<li>Tidak ada</li>"}</ol></div>`;
+
+  table($("tAqCab"), {csv:"akuisisi_edc_cabang", sort:"pm", page:20, rows, cols:[
+    {k:"a",l:"Area",f:a=>title(a).replace("Area ","")}, {k:"kl",l:"Kelas"}, {k:"kd",l:"Kode"}, {k:"nm",l:"Cabang"},
+    {k:"reg",l:"MTD Reg",num:1,f:fN}, {k:"aob",l:"MTD AOB",num:1,f:fN}, {k:"mtd",l:"MTD",num:1,f:fN}, {k:"tm",l:"Target MTD",num:1,f:fN}, {k:"pm",l:"% MTD",num:1,f:pctHtml}, {k:"gm",l:"GAP MTD",num:1,f:v=>`<b class="${v>=0?"good":"bad"}">${fN(v)}</b>`},
+    {k:"net",l:"Nett YTD",num:1,f:fN}, {k:"ty",l:"Target YTD",num:1,f:fN}, {k:"py",l:"% YTD",num:1,f:pctHtml}, {k:"cl",l:"Close YTD",num:1,f:fN},
+    {k:"sv",l:"SV YTD",num:1,f:fC}, {k:"cif",l:"New CIF",num:1,f:fN}],
+    foot: r => { const s_ = k => sum(r,x=>x[k]); return ["","","","Total",fN(s_("reg")),fN(s_("aob")),fN(s_("mtd")),fN(s_("tm")),pctHtml(s_("tm")?s_("mtd")/s_("tm"):null),fN(s_("mtd")-s_("tm")),fN(s_("net")),fN(s_("ty")),pctHtml(s_("ty")?s_("net")/s_("ty"):null),fN(s_("cl")),fC(s_("sv")),fN(s_("cif"))]; }});
+}
+
+const RENDER = {ringkasan:renderSummary, atm:renderATM, edc:renderEDC, lvm:renderLVM, cabang:renderCabang, merchant:renderMerchant, users:renderUsers, wpr:renderWPR, duta:renderDuta, usak:renderUsak, senator:renderSenator, akuisisi:renderAkuisisi};
 let TAB = "ringkasan";
-const TITLES = {ringkasan:"Overview", atm:"ATM & CRM", edc:"EDC Merchant", lvm:"Livin' Merchant", cabang:"Scorecard cabang", merchant:"Pencarian", users:"Kelola pengguna", wpr:"Weekly Performance Report", duta:"Dashboard GMM Duta Transaksi", usak:"Dashboard GMM USAK Livin' Merchant Fase 3"};
+const TITLES = {ringkasan:"Overview", atm:"ATM & CRM", edc:"EDC Merchant", lvm:"Livin' Merchant", cabang:"Scorecard cabang", merchant:"Pencarian", users:"Kelola pengguna", wpr:"Weekly Performance Report", duta:"Dashboard GMM Duta Transaksi", usak:"Dashboard GMM USAK Livin' Merchant Fase 3", senator:"Dashboard Monitoring Senator", akuisisi:"Dashboard Akuisisi EDC"};
 const PARENT = {duta:"ringkasan", usak:"lvm"};        // halaman turunan: tidak punya menu sendiri
 function subTitle(){
   if (USER.lim) return `Cari merchant EDC & E-Commerce atau Livin' Merchant, lalu lihat performance lengkapnya`;
@@ -1359,6 +1479,8 @@ function subTitle(){
     users:`Setujui pendaftaran, atur akses area, dan nonaktifkan akun`,
     duta: D.duta ? `Region XI Bali & Nusra, posisi ${D.duta.asof}${D.duta.since?`, dihitung sejak ${D.duta.since}`:""}` : "",
     usak: D.usak ? `Akuisisi Livin' Merchant oleh pegawai${D.usak.period?`, ${D.usak.period}`:""}${D.usak.asof && !D.usak.period.endsWith(D.usak.asof)?`, posisi USAK ${D.usak.asof}`:""}` : "",
+    senator: D.senator ? `Region XI Bali & Nusra, posisi ${D.senator.posisi} (tarikan EDA)` : "",
+    akuisisi: D.akuisisi ? `Akuisisi new merchant EDC channel cabang (mass retail), posisi ${(() => { const d = new Date(D.akuisisi.posisi); return isNaN(d) ? D.akuisisi.posisi : d.getDate()+" "+BLN[d.getMonth()]+" "+d.getFullYear(); })()}` : "",
     wpr: D.wpr ? `Merchant EDC & E-Commerce, minggu ke-${D.wpr.weeks[0]} sampai ${D.wpr.weeks[D.wpr.weeks.length-1]} ${D.wpr.year} dan year to date. Sumber: ${D.wpr.file}` : ""}[TAB];
 }
 function renderTab(){
@@ -1371,7 +1493,7 @@ function goTab(t){
   if (USER.lim) t = "merchant";
   TAB = t;
   document.querySelectorAll("#tabs button[data-tab]").forEach(x => x.classList.toggle("active", x.dataset.tab===t));
-  if (t === "duta" || t === "usak") setWeekly(true);
+  if (["duta","usak","senator","akuisisi"].includes(t)) setWeekly(true);
   document.querySelectorAll(".tab").forEach(s => s.hidden = s.id !== "tab-"+t);
   window.scrollTo(0,0); renderTab();
 }
@@ -1396,14 +1518,14 @@ function start(){
     opts($("lvmKelas"), [...new Set(Object.values(KELAS))].sort());
     $("navEdc").innerHTML = `<i class="dot d-edc"></i>Merchant W${D.edc.week}`;
     $("navWpr").hidden = !D.wpr;
-    $("navDuta").hidden = !D.duta; $("navUsak").hidden = !D.usak;
+    $("navDuta").hidden = !D.duta; $("navUsak").hidden = !D.usak; $("navSenator").hidden = !D.senator; $("navAkq").hidden = !D.akuisisi;
     if (D.wpr) $("navWpr").innerHTML = `<i class="dot d-wpr"></i>WPR W${D.wpr.weeks[D.wpr.weeks.length-1]} ${D.wpr.year}`;
   }
   $("userLine").textContent = USER.nama;
   $("roleLine").textContent = [lim ? LIMITED_ROLES[USER.role] : USER.jabatan, USER.unit].filter(Boolean).join(", ");
   $("meFoto").outerHTML = avatarHtml(USER.foto, USER.nama, "sm").replace('class="avatar sm"', 'class="avatar sm" id="meFoto"');
   $("navUsers").hidden = USER.role !== "admin";
-  $("navWeekly").hidden = lim || (!D.duta && !D.usak);
+  $("navWeekly").hidden = lim || !(D.duta || D.usak || D.senator || D.akuisisi);
   if (USER.role === "admin") loadUsers().catch(e => console.warn(e));
   else if (TAB === "users") TAB = "ringkasan";
   if (lim) { TAB = "merchant"; MS.sel = null; }
@@ -1422,7 +1544,8 @@ $("tabs").addEventListener("click", e => { const b = e.target.closest("button[da
 $("lobArea").addEventListener("change", () => { $("lobCab").value = ""; renderEdcLob(); });
 $("edcRankCab").addEventListener("change", renderEdcRank);
 $("lvmUsakCab").addEventListener("change", renderLvmUsak);
-["dtStat","usCab","usPrio"].forEach(id => $(id).addEventListener("change", renderTab));
+["dtStat","usCab","usPrio","aqKelas"].forEach(id => $(id).addEventListener("change", renderTab));
+["snCab","snStat"].forEach(id => $(id).addEventListener("change", renderSenatorUni));
 $("ovEdcSeg").addEventListener("change", renderOvDrops);
 ["wSeg","wEnv"].forEach(id => $(id).addEventListener("change", () => { $("wCab").value = ""; renderWPR(); }));
 $("wCab").addEventListener("change", renderWPR);

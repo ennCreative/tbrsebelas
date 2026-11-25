@@ -585,7 +585,7 @@ function renderCabang(){
 
 /* ================================================================== CARI MERCHANT */
 const MS_MODES = {
-  edc:{label:"EDC & E-Commerce", box:"merchant",
+  edc:{label:"e-Channel", box:"merchant",
        fields:[["nm","Nama merchant"],["on","Official name"],["mid","MID"],["rek","No. rekening"]]},
   lvm:{label:"Livin' Merchant", box:"lvm", fields:[["nm","Nama merchant"],["mid","MID"],["rek","No. rekening"]]},
   atm:{label:"ATM", box:null, fields:[["id","ID mesin"],["nm","Nama lokasi"]]},
@@ -972,7 +972,7 @@ function renderSummary(){
     prodPanel({tab:"atm", color:C.s1, name:"ATM & CRM", per:`Jan–${BLN[A.last]} ${A.year}`, lbl:"Fee based income YTD", sl:"FBI per bulan",
       val:fRp(at.f), cmp:grHtml(at.f,at.fp,`dibanding ${A.year-1}`), spark:"atm",
       subs:[["Transaksi YTD", fC(at.t)], ["Jumlah mesin", fN(at.n)]]}) +
-    prodPanel({tab:"edc", color:C.s2, name:"EDC & E-Commerce", per:`s.d. minggu ${E.week} ${E.year}`, lbl:"Sales volume YTD", sl:"Sales volume per tahun",
+    prodPanel({tab:"edc", color:C.s2, name:"e-Channel", per:`s.d. minggu ${E.week} ${E.year}`, lbl:"Sales volume YTD", sl:"Sales volume per tahun",
       val:fRp(ed.sv), cmp:grHtml(ed.sv,ed.svp,`dibanding ${E.year-1}`), spark:"edc",
       subs:[["MDFG YTD", fRp(ed.md)], ["Merchant", fN(ed.merch)]]}) +
     prodPanel({tab:"lvm", color:C.s3, name:"Livin' Merchant", per:`s.d. ${d} ${BLN[m-1]} ${y}`, lbl:"Akuisisi merchant baru YTD", sl:"Akuisisi per bulan",
@@ -994,7 +994,7 @@ function renderSummary(){
   const atmEnd = new Date(A.year, A.last+1, 0);
   $("sumAsOf").innerHTML = `<span class="asof-t">Posisi data terakhir</span>
     <span class="asof-i"><i class="dot d-atm"></i>ATM &amp; CRM <b>${atmEnd.getDate()} ${BLN[A.last]} ${A.year}</b></span>
-    <span class="asof-i"><i class="dot d-edc"></i>EDC &amp; E-Commerce <b>Minggu ke-${E.week} ${E.year}</b></span>
+    <span class="asof-i"><i class="dot d-edc"></i>e-Channel <b>Minggu ke-${E.week} ${E.year}</b></span>
     <span class="asof-i"><i class="dot d-lvm"></i>Livin' Merchant <b>${d} ${BLN[m-1]} ${y}</b></span>
     ${D.duta?`<span class="asof-i"><i class="dot d-duta"></i>Duta Transaksi <b>${esc(D.duta.asof)}</b> <button class="head-btn asof-btn" id="goDuta">Buka Duta Transaksi</button></span>`:""}
     <span class="asof-i upd">Diperbarui ${esc(D.generated)}</span>`;
@@ -1006,7 +1006,7 @@ function renderSummary(){
   // ---- pie chart
   const tot = at.f + ed.md + lv.fby;
   drawPie($("cSumPie1"), {fmt:fRp, center:["total FBI", fRp(tot).replace("Rp ","")], items:[
-    {label:"ATM & CRM", value:at.f, color:C.s1}, {label:"EDC & E-Commerce", value:ed.md, color:C.s2}, {label:"Livin' Merchant", value:lv.fby, color:C.s3}]});
+    {label:"ATM & CRM", value:at.f, color:C.s1}, {label:"e-Channel", value:ed.md, color:C.s2}, {label:"Livin' Merchant", value:lv.fby, color:C.s3}]});
   const PAL = [C.s1, C.s2, C.s3, C.s4, "#7b61d1", "#d1559b"], OTHER = C.prev;
   const groups = AREA ? branchSlices() : areas().map((a,i) => ({label:title(a).replace("Area ",""), color:AREA_COLOR[a]||PAL[i%PAL.length], fbi:(x=>x.at.f+x.ed.md+x.lv.fby)({at:atmSummary(a), ed:edcSummary(a), lv:lvmSummary(a)}),
                                                                  ak:lvmSummary(a).akY, tak:lvmSummary(a).tgt.akYtd}));
@@ -1162,7 +1162,7 @@ async function renderOvDrops(){
     {k:"rk",l:"#",num:1}, {k:"id",l:"ID mesin"}, {k:"nm",l:"Nama lokasi"}, {k:"j",l:"Jenis",h:(x,v)=>`<span class="pill">${v}</span>`}, {k:"cb",l:"Cabang"},
     {k:"p",l:`Volume ${Pm}`,num:1,f:fC}, {k:"c",l:`Volume ${Lm}`,num:1,f:fC}, {k:"d",l:"Penurunan",num:1,h:(x,v)=>`<span class="down">${fC(v)}</span>`}, {k:"g",l:"%",num:1,h:(x,v)=>growthTag(v)}]});
 
-  // EDC & E-Commerce: SV YTD vs tahun lalu, per nama merchant (MID dengan nama sama digabung)
+  // e-Channel: SV YTD vs tahun lalu, per nama merchant (MID dengan nama sama digabung)
   if (!BOX.merchant){
     $("ovEdcInfo").textContent = "Menyiapkan data merchant…";
     try { await loadBox("merchant"); } catch(e){ $("ovEdcInfo").textContent = "Gagal memuat data merchant: " + e.message; return; }
@@ -1440,78 +1440,116 @@ const kcBadge = (c, p, unit="%") => {            // pertumbuhan YoY -> {cls, txt
 };
 const kcTgt = (c, t) => { const p = t ? c/t : null; return p==null ? null : {cls:p>=1?"up":p>=.8?"mid":"down", txt:`${fP(p)} dari target`}; };
 const fNum = v => fC(v).replace(/^Rp\s*/,"");
+// rincian per kategori untuk kartu KPI: rows = [{k, ...nilai}], fv = format nilai, fb = badge
+function kcBreak(groups, val, fmt, badge, limit=7){
+  let list = Object.entries(groups).map(([k,o]) => ({k, o, v:val(o)})).filter(x => x.v != null && isFinite(x.v) && (x.v || (badge && badge(x.o))));
+  list.sort((x,y) => y.v - x.v);
+  return list.slice(0, limit).map(x => ({l:title(x.k), v:fmt(x.v), b:badge ? badge(x.o) : null}));
+}
+const kcShort = b => b ? {cls:b.cls, txt:b.txt.replace(" YoY","").replace(" dari target","")} : null;
 function kpiCardsData(){
   const E = D.edc, A = D.atm, W = `W${E.week} ${E.year}`;
   const scope = AREA ? title(AREA) : "Region XI";
   if (KC_PROD === "edc"){
-    const s = edcSummary(AREA);
-    const fj = {}; for (const [a,j,v,vp] of E.fundj || []) if (!AREA || a===AREA){ const o = fj[j] || (fj[j] = {v:0,vp:0}); o.v+=v; o.vp+=vp; }
+    const s = edcSummary(AREA), I = Object.fromEntries(E.cols.map((c,i)=>[c,i]));
+    const seg = {};
+    for (const r of E.cube) if (!AREA || r[0]===AREA){ const o = seg[r[2]] || (seg[r[2]] = {}); for (const k of ["sv","svp","tx","txp","md","mdp","fd","fdp","merch","edc"]) o[k] = (o[k]||0) + r[I[k]]; }
+    const B = (val, fmt, cur, prev, unit) => kcBreak(seg, val, fmt, cur ? (o => kcShort(kcBadge(cur(o), prev(o), unit))) : null);
+    const fj = {}; for (const [a,j,v,vp,n,nf] of E.fundj || []) if (!AREA || a===AREA){ const o = fj[j] || (fj[j] = {v:0,vp:0,n:0,nf:0}); o.v+=v; o.vp+=vp; o.n+=n||0; o.nf+=nf||0; }
     const fts = s.sv ? s.fd/(s.sv*52/E.week) : null, ftsp = s.svp ? s.fdp/(s.svp*52/E.week) : null;
     const rows = Object.values(E.nrows || {}).length ? (AREA ? (E.nrows[AREA]||0) : sum(Object.values(E.nrows), v=>v)) : null;
     const tk = s.tx ? s.sv/s.tx : 0, tkp = s.txp ? s.svp/s.txp : 0, mdr = s.sv ? s.md/s.sv : null, mdrp = s.svp ? s.mdp/s.svp : null;
-    return {info:`${rows!=null?fN(rows)+" baris rekening, ":""}${scope}`, file:`ringkasan_kpi_edc_${W.replace(" ","_")}`, cards:[
-      {l:"Total sales volume", v:fNum(s.sv), sub:`YTD ${W}`, b:kcBadge(s.sv,s.svp)},
-      {l:"Total frekuensi", v:fNum(s.tx), sub:`YTD ${W}`, b:kcBadge(s.tx,s.txp)},
-      {l:"Total fee based income", v:fNum(s.md), sub:`YTD ${W} (MDFG)`, b:kcBadge(s.md,s.mdp)},
+    const pct2 = v => (v*100).toLocaleString("id-ID",{minimumFractionDigits:2,maximumFractionDigits:2})+"%";
+    const nRek = sum(Object.values(fj), o=>o.n);
+    return {info:`${rows!=null?fN(rows)+" baris rekening, ":""}${scope}`, file:`ringkasan_kpi_echannel_${W.replace(" ","_")}`, cards:[
+      {l:"Total sales volume", v:fNum(s.sv), sub:`YTD ${W}`, b:kcBadge(s.sv,s.svp), lt:"Per segmen", list:B(o=>o.sv, fNum, o=>o.sv, o=>o.svp)},
+      {l:"Total frekuensi", v:fNum(s.tx), sub:`YTD ${W}`, b:kcBadge(s.tx,s.txp), lt:"Per segmen", list:B(o=>o.tx, fNum, o=>o.tx, o=>o.txp)},
+      {l:"Total fee based income", v:fNum(s.md), sub:`YTD ${W} (MDFG)`, b:kcBadge(s.md,s.mdp), lt:"Per segmen", list:B(o=>o.md, fNum, o=>o.md, o=>o.mdp)},
       {l:"Total average balance", v:fNum(s.fd), sub:`Posisi ${W}, Count For Funding = 1. FTS ${fP(fts)} (${ftsp!=null?((fts-ftsp)*100>=0?"+":"")+((fts-ftsp)*100).toLocaleString("id-ID",{maximumFractionDigits:2})+" pp YoY":"–"})`, b:kcBadge(s.fd,s.fdp),
-       list:Object.entries(fj).filter(([,o])=>o.v||o.vp).sort((x,y)=>y[1].v-x[1].v).map(([j,o]) => ({l:j, v:fNum(o.v), b:kcBadge(o.v,o.vp)}))},
-      {l:"Merchant aktif (MID)", v:fN(s.merch), sub:`Snapshot ${W}, merch = 1`},
-      {l:"Jumlah EDC", v:fN(s.edc), sub:`Snapshot ${W}`},
-      {l:"Average ticket size", v:"Rp "+fN(Math.round(tk)), sub:`YTD ${W}, SV ÷ frekuensi`, b:kcBadge(tk,tkp)},
-      {l:"MDR blended", v:mdr==null?"–":(mdr*100).toLocaleString("id-ID",{minimumFractionDigits:2,maximumFractionDigits:2})+"%", sub:`YTD ${W}, FBI ÷ SV`, b:kcBadge(mdr,mdrp,"pp")}]};
+       lt:"Per jenis rekening", tbl:{h:["Jenis","Rek.","Saldo","YoY"], rows:Object.entries(fj).filter(([,o])=>o.v||o.vp||o.n).sort((x,y)=>y[1].v-x[1].v)
+         .map(([j,o]) => [j, fN(o.n), fNum(o.v), kcShort(kcBadge(o.v,o.vp))]),
+         note:`Total ${fN(nRek)} rekening (Count For Funding = 1), ${fN(sum(Object.values(fj),o=>o.nf))} di antaranya bersaldo. Rata-rata ${fNum(nRek ? s.fd/nRek : 0)} per rekening.`}},
+      {l:"Merchant aktif (MID)", v:fN(s.merch), sub:`Snapshot ${W}, merch = 1`, lt:"Per segmen", list:B(o=>o.merch, fN)},
+      {l:"Jumlah EDC", v:fN(s.edc), sub:`Snapshot ${W}`, lt:"Per segmen", list:B(o=>o.edc, fN)},
+      {l:"Average ticket size", v:"Rp "+fN(Math.round(tk)), sub:`YTD ${W}, SV ÷ frekuensi`, b:kcBadge(tk,tkp), lt:"Per segmen (Rp)", list:B(o=>o.tx?o.sv/o.tx:null, v=>fN(Math.round(v)), o=>o.tx?o.sv/o.tx:null, o=>o.txp?o.svp/o.txp:null)},
+      {l:"MDR blended", v:mdr==null?"–":pct2(mdr), sub:`YTD ${W}, FBI ÷ SV`, b:kcBadge(mdr,mdrp,"pp"), lt:"Per segmen", list:B(o=>o.sv?o.md/o.sv:null, pct2, o=>o.sv?o.md/o.sv:null, o=>o.svp?o.mdp/o.svp:null, "pp")}]};
   }
   if (KC_PROD === "atm"){
-    const s = atmSummary(AREA), P = `Jan–${BLN[A.last]} ${A.year}`;
+    const s = atmSummary(AREA), P = `Jan–${BLN[A.last]} ${A.year}`, n = A.last+1;
+    const ms = A.machines.filter(m => !AREA || m.a===AREA), pv = A.prev.filter(p => !AREA || p.a===AREA);
+    const grp = (key) => { const g = {};
+      for (const m of ms){ const o = g[m[key]||"Lainnya"] || (g[m[key]||"Lainnya"] = {n:0,t:0,v:0,f:0,vs:0,ts:0,tp:0,vp:0,fp:0}); o.n++; o.t+=mYtd(m,"t"); o.v+=mYtd(m,"v"); o.f+=mYtd(m,"f"); o.vs+=mYtd(m,"vs"); o.ts+=mYtd(m,"ts"); }
+      for (const p of pv){ const o = g[p[key]||"Lainnya"] || (g[p[key]||"Lainnya"] = {n:0,t:0,v:0,f:0,vs:0,ts:0,tp:0,vp:0,fp:0}); o.tp+=ytd(p.t,n); o.vp+=ytd(p.v,n); o.fp+=ytd(p.f,n); }
+      return g; };
+    const gl = grp("g"), gj = grp("j");
+    const yb = (c,p) => o => kcShort(kcBadge(c(o), p(o)));
     const tk = s.t ? s.v/s.t : 0, tkp = s.tp ? s.vp/s.tp : 0;
+    const keep = t => x => ({...x, l:t(x.l)});
+    const up = l => l.length <= 4 ? l.toUpperCase() : l;
     return {info:`${fN(s.n)} mesin, ${scope}`, file:`ringkasan_kpi_atm_${A.year}_${A.last+1}`, cards:[
-      {l:"Total transaksi", v:fNum(s.t), sub:`YTD ${P}`, b:kcBadge(s.t,s.tp)},
-      {l:"Total volume transaksi", v:fNum(s.v), sub:`YTD ${P}`, b:kcBadge(s.v,s.vp)},
-      {l:"Total fee based income", v:fNum(s.f), sub:`YTD ${P}`, b:kcBadge(s.f,s.fp)},
-      {l:"Volume setor tunai", v:fNum(s.vs), sub:`YTD ${P}, ${fC(s.ts)} transaksi setor`},
-      {l:"Jumlah mesin", v:fN(s.n), sub:`Posisi ${BLN[A.last]} ${A.year}`, list:[{l:"CRM", v:fN(s.crm)}, {l:"ATM", v:fN(s.n-s.crm)}]},
-      {l:"Rata-rata nominal per transaksi", v:"Rp "+fN(Math.round(tk)), sub:`YTD ${P}, volume ÷ transaksi`, b:kcBadge(tk,tkp)},
-      {l:"Transaksi per mesin per bulan", v:fN(Math.round(s.n ? s.t/s.n/(A.last+1) : 0)), sub:`Rata-rata ${P}`},
-      {l:"FBI per mesin", v:fNum(s.n ? s.f/s.n : 0), sub:`YTD ${P}`}]};
+      {l:"Total transaksi", v:fNum(s.t), sub:`YTD ${P}`, b:kcBadge(s.t,s.tp), lt:"Per lokasi", list:kcBreak(gl, o=>o.t, fNum, yb(o=>o.t,o=>o.tp))},
+      {l:"Total volume transaksi", v:fNum(s.v), sub:`YTD ${P}`, b:kcBadge(s.v,s.vp), lt:"Per lokasi", list:kcBreak(gl, o=>o.v, fNum, yb(o=>o.v,o=>o.vp))},
+      {l:"Total fee based income", v:fNum(s.f), sub:`YTD ${P}`, b:kcBadge(s.f,s.fp), lt:"Per lokasi", list:kcBreak(gl, o=>o.f, fNum, yb(o=>o.f,o=>o.fp))},
+      {l:"Volume setor tunai", v:fNum(s.vs), sub:`YTD ${P}, ${fC(s.ts)} transaksi setor`, lt:"Per lokasi", list:kcBreak(gl, o=>o.vs, fNum)},
+      {l:"Jumlah mesin", v:fN(s.n), sub:`Posisi ${BLN[A.last]} ${A.year}`, lt:"Per jenis dan lokasi", list:[...kcBreak(gj, o=>o.n, fN).map(keep(up)), ...kcBreak(gl, o=>o.n, fN)]},
+      {l:"Rata-rata nominal per transaksi", v:"Rp "+fN(Math.round(tk)), sub:`YTD ${P}, volume ÷ transaksi`, b:kcBadge(tk,tkp), lt:"Per jenis mesin (Rp)", list:kcBreak(gj, o=>o.t?o.v/o.t:null, v=>fN(Math.round(v)), yb(o=>o.t?o.v/o.t:null, o=>o.tp?o.vp/o.tp:null)).map(keep(up))},
+      {l:"Transaksi per mesin per bulan", v:fN(Math.round(s.n ? s.t/s.n/n : 0)), sub:`Rata-rata ${P}`, lt:"Per jenis mesin", list:kcBreak(gj, o=>o.n?o.t/o.n/n:null, v=>fN(Math.round(v))).map(keep(up))},
+      {l:"FBI per mesin", v:fNum(s.n ? s.f/s.n : 0), sub:`YTD ${P}`, lt:"Per jenis mesin", list:kcBreak(gj, o=>o.n?o.f/o.n:null, fNum).map(keep(up))}]};
   }
   const s = lvmSummary(AREA), {y,m,d} = lvmDate(), asof = `${d} ${BLN[m-1]} ${y}`;
+  const rows = D.lvm.cube.filter(r => !AREA || r[0]===AREA);
+  const byG = {}; for (const r of rows){ (byG[r[2]] || (byG[r[2]] = [])).push(r); }
+  const gr_ = Object.fromEntries(Object.entries(byG).map(([k,v]) => [k, lvmAgg(v)]));
+  const byK = {}; for (const r of rows){ const k = KELAS[r[1]] || "Lainnya"; (byK[k] || (byK[k] = {rows:[], codes:new Set()})); byK[k].rows.push(r); byK[k].codes.add(r[1]); }
+  const kl = Object.fromEntries(Object.entries(byK).map(([k,v]) => [k, {...lvmAgg(v.rows), t:tgtFor([...v.codes].filter(c => D.targets[c]))}]));
+  const kOrd = list => list.sort((a,b) => a.l.localeCompare(b.l));
+  const kT = (val, tg) => kOrd(Object.entries(kl).map(([k,o]) => ({l:k, v:fN(val(o)), b:kcShort(kcTgt(val(o), tg(o)))})));
+  const G = val => kcBreak(gr_, val, fNum);
   return {info:`${fN(s.n)} merchant terdaftar, ${scope}`, file:`ringkasan_kpi_lvm_${y}_${m}_${d}`, cards:[
-    {l:"Merchant terdaftar", v:fN(s.n), sub:`Posisi ${asof}`},
-    {l:"Merchant aktif bertransaksi", v:fN(s.act), sub:`${fP(s.n?s.act/s.n:0)} dari merchant terdaftar`},
-    {l:"Akuisisi YTD", v:fN(s.akY), sub:`Target s.d. ${asof}: ${fN(s.tgt.akYtd)}`, b:kcTgt(s.akY, s.tgt.akYtd)},
-    {l:`Akuisisi MTD ${BLN[m-1]}`, v:fN(s.akM), sub:`Target s.d. ${asof}: ${fN(s.tgt.akMtdP)}`, b:kcTgt(s.akM, s.tgt.akMtdP)},
-    {l:"Merchant USAK", v:fN(s.usak), sub:`Target ${fN(s.tgt.usak)}`, b:kcTgt(s.usak, s.tgt.usak)},
-    {l:"Total sales volume", v:fNum(s.svy), sub:`YTD, MTD ${BLN[m-1]} ${fNum(s.svm)}`},
-    {l:"Total fee based income", v:fNum(s.fby), sub:`YTD, MTD ${BLN[m-1]} ${fNum(s.fbm)}`},
-    {l:"Avg balance tabungan", v:fNum(s.bal), sub:`${fN(s.cls)} rekening merchant closed`}]};
+    {l:"Merchant terdaftar", v:fN(s.n), sub:`Posisi ${asof}`, lt:"Per grading transaksi", list:kcBreak(gr_, o=>o.n, fN)},
+    {l:"Merchant aktif bertransaksi", v:fN(s.act), sub:`${fP(s.n?s.act/s.n:0)} dari merchant terdaftar`, lt:"Per grading transaksi", list:kcBreak(gr_, o=>o.act, fN)},
+    {l:"Akuisisi YTD", v:fN(s.akY), sub:`Target s.d. ${asof}: ${fN(s.tgt.akYtd)}`, b:kcTgt(s.akY, s.tgt.akYtd), lt:"Per kelas cabang, pencapaian target", list:kT(o=>o.akY, o=>o.t.akYtd)},
+    {l:`Akuisisi MTD ${BLN[m-1]}`, v:fN(s.akM), sub:`Target s.d. ${asof}: ${fN(s.tgt.akMtdP)}`, b:kcTgt(s.akM, s.tgt.akMtdP), lt:"Per kelas cabang, pencapaian target", list:kT(o=>o.akM, o=>o.t.akMtdP)},
+    {l:"Merchant USAK", v:fN(s.usak), sub:`Target ${fN(s.tgt.usak)}`, b:kcTgt(s.usak, s.tgt.usak), lt:"Per kelas cabang, pencapaian target", list:kT(o=>o.usak, o=>o.t.usak)},
+    {l:"Total sales volume", v:fNum(s.svy), sub:`YTD, MTD ${BLN[m-1]} ${fNum(s.svm)}`, lt:"Per grading transaksi", list:G(o=>o.svy)},
+    {l:"Total fee based income", v:fNum(s.fby), sub:`YTD, MTD ${BLN[m-1]} ${fNum(s.fbm)}`, lt:"Per grading transaksi", list:G(o=>o.fby)},
+    {l:"Avg balance tabungan", v:fNum(s.bal), sub:`${fN(s.cls)} rekening merchant closed`, lt:"Per grading transaksi", list:G(o=>o.bal)}]};
 }
 function renderKpiCards(){
   const K = KC_LAST = kpiCardsData();
   $("kcInfo").textContent = K.info;
   document.querySelectorAll("#kcProd button").forEach(b => { b.classList.toggle("on", b.dataset.p===KC_PROD); b.setAttribute("aria-selected", b.dataset.p===KC_PROD); });
   const badge = b => b ? `<span class="kc-b ${b.cls}">${esc(b.txt)}</span>` : "";
-  $("kcGrid").innerHTML = K.cards.map(c => `<div class="kc${c.list?" tall":""}">
+  const mini = b => b ? `<i class="${b.cls}">${esc(b.txt)}</i>` : "<i></i>";
+  $("kcGrid").innerHTML = K.cards.map(c => `<div class="kc">
       <div class="kc-l">${esc(c.l)}</div><div class="kc-v">${esc(c.v)}</div><div class="kc-s">${esc(c.sub||"")}</div>${badge(c.b)}
-      ${c.list?`<div class="kc-list">${c.list.map(x=>`<div><span>${esc(x.l)}</span><b>${esc(x.v)}</b>${x.b?`<i class="${x.b.cls}">${esc(x.b.txt.replace(" YoY",""))}</i>`:"<i></i>"}</div>`).join("")}</div>`:""}
+      ${c.list && c.list.length ? `<div class="kc-list"><div class="kc-lt">${esc(c.lt||"")}</div>${c.list.map(x=>`<div><span title="${esc(x.l)}">${esc(x.l)}</span><b>${esc(x.v)}</b>${mini(x.b)}</div>`).join("")}</div>` : ""}
+      ${c.tbl ? `<div class="kc-list"><div class="kc-lt">${esc(c.lt||"")}</div><table class="kc-tbl"><thead><tr>${c.tbl.h.map((h,i)=>`<th${i?' class="n"':""}>${esc(h)}</th>`).join("")}</tr></thead>
+        <tbody>${c.tbl.rows.map(r=>`<tr><td>${esc(r[0])}</td><td class="n">${esc(r[1])}</td><td class="n"><b>${esc(r[2])}</b></td><td class="n">${mini(r[3])}</td></tr>`).join("")}</tbody></table>
+        ${c.tbl.note?`<div class="kc-note">${esc(c.tbl.note)}</div>`:""}</div>` : ""}
     </div>`).join("");
 }
 function kcDownloadXls(){
   const K = KC_LAST; if (!K) return;
   const rows = [["Indikator","Nilai","Keterangan","Perubahan"]];
-  for (const c of K.cards){ rows.push([c.l, c.v, c.sub||"", c.b?c.b.txt:""]); for (const x of c.list||[]) rows.push(["  "+c.l+": "+x.l, x.v, "", x.b?x.b.txt:""]); }
+  for (const c of K.cards){ rows.push([c.l, c.v, c.sub||"", c.b?c.b.txt:""]);
+    for (const x of c.list||[]) rows.push(["   "+(c.lt||"")+": "+x.l, x.v, "", x.b?x.b.txt:""]);
+    if (c.tbl) for (const r of c.tbl.rows) rows.push(["   "+r[0], r[2], `${r[1]} rekening`, r[3]?r[3].txt:""]); }
   const html = `<html><head><meta charset="utf-8"></head><body><table border="1"><caption>Ringkasan KPI, ${esc(K.info)}</caption>${rows.map((r,i)=>`<tr>${r.map(v=>i?`<td>${esc(v)}</td>`:`<th>${esc(v)}</th>`).join("")}</tr>`).join("")}</table></body></html>`;
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([html], {type:"application/vnd.ms-excel"})); a.download = K.file + ".xls"; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 function kcDownloadPng(){
   const K = KC_LAST; if (!K) return;
   const cols = 4, cw = 330, gap = 16, pad = 24, rowsN = Math.ceil(K.cards.length/cols);
-  const ch = c => 166 + (c.list ? c.list.length*22 + 14 : 0);
+  const items = c => c.tbl ? c.tbl.rows.map(r => ({l:`${r[0]} (${r[1]} rek.)`, v:r[2], b:r[3]})) : (c.list || []);
+  const ch = c => 166 + (items(c).length ? items(c).length*22 + 36 : 0);
   const rowH = Array.from({length:rowsN}, (_,r) => Math.max(...K.cards.slice(r*cols, r*cols+cols).map(ch)));
   const W = pad*2 + cols*cw + (cols-1)*gap, H = pad*2 + 50 + rowH.reduce((a,b)=>a+b+gap, 0), sc = 2;
   const cv = document.createElement("canvas"); cv.width = W*sc; cv.height = H*sc; const g = cv.getContext("2d"); g.scale(sc, sc);
   const F = getComputedStyle(document.body).fontFamily || "sans-serif";
   g.fillStyle = "#ffffff"; g.fillRect(0,0,W,H);
   g.fillStyle = "#0e2a47"; g.font = `700 18px ${F}`; g.fillText("Ringkasan KPI", pad, pad+16);
-  g.fillStyle = "#4f5d6b"; g.font = `13px ${F}`; g.fillText(`${{edc:"EDC & E-Commerce",atm:"ATM & CRM",lvm:"Livin' Merchant"}[KC_PROD]}, ${K.info}`, pad, pad+38);
+  g.fillStyle = "#4f5d6b"; g.font = `13px ${F}`; g.fillText(`${{edc:"e-Channel",atm:"ATM & CRM",lvm:"Livin' Merchant"}[KC_PROD]}, ${K.info}`, pad, pad+38);
   const rr = (x,y,w,h,r) => { g.beginPath(); g.moveTo(x+r,y); g.arcTo(x+w,y,x+w,y+h,r); g.arcTo(x+w,y+h,x,y+h,r); g.arcTo(x,y+h,x,y,r); g.arcTo(x,y,x+w,y,r); g.closePath(); };
   let y0 = pad + 56;
   K.cards.forEach((c,i) => {
@@ -1530,9 +1568,13 @@ function kcDownloadPng(){
     if (c.b){ g.font=`700 12px ${F}`; const tw = g.measureText(c.b.txt).width + 18; rr(x+22, by, tw, 24, 12);
       g.fillStyle = c.b.cls==="up" ? "#e3f3e8" : c.b.cls==="mid" ? "#fdf1d3" : "#fbe4e3"; g.fill();
       g.fillStyle = c.b.cls==="up" ? "#0c7a3e" : c.b.cls==="mid" ? "#8a5a00" : "#b42a2a"; g.fillText(c.b.txt, x+31, by+16); }
-    (c.list||[]).forEach((it,j) => { const yy = y0 + 176 + j*22; g.font=`13px ${F}`; g.fillStyle="#4f5d6b"; g.fillText(it.l, x+22, yy);
-      g.font=`700 13px ${F}`; g.fillStyle="#0e2a47"; g.fillText(it.v, x+130, yy);
-      if (it.b){ const t = it.b.txt.replace(" YoY",""); g.fillStyle = it.b.cls==="up" ? "#0c7a3e" : "#b42a2a"; g.fillText(t, x+cw-22-g.measureText(t).width, yy); } });
+    const its = items(c);
+    if (its.length){ g.strokeStyle="#dfe4ea"; g.setLineDash([3,3]); g.beginPath(); g.moveTo(x+22, y0+150); g.lineTo(x+cw-22, y0+150); g.stroke(); g.setLineDash([]);
+      g.font=`700 11px ${F}`; g.fillStyle="#8693a0"; g.fillText((c.lt||"").toUpperCase(), x+22, y0+170); }
+    its.forEach((it,j) => { const yy = y0 + 194 + j*22; g.font=`13px ${F}`; g.fillStyle="#4f5d6b";
+      let lb = it.l; while (g.measureText(lb).width > 150 && lb.length > 3) lb = lb.slice(0,-2); g.fillText(lb + (lb!==it.l?"…":""), x+22, yy);
+      g.font=`700 13px ${F}`; g.fillStyle="#0e2a47"; const vw = g.measureText(it.v).width; g.fillText(it.v, x+cw-110-vw, yy);
+      if (it.b){ const t = it.b.txt; g.font=`700 12px ${F}`; g.fillStyle = it.b.cls==="up" ? "#0c7a3e" : it.b.cls==="mid" ? "#8a5a00" : "#b42a2a"; g.fillText(t, x+cw-22-g.measureText(t).width, yy); } });
   });
   cv.toBlob(bl => { const a = document.createElement("a"); a.href = URL.createObjectURL(bl); a.download = K.file + ".png"; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); });
 }
@@ -1545,21 +1587,21 @@ let TAB = "ringkasan";
 const TITLES = {ringkasan:"Overview", atm:"ATM & CRM", edc:"EDC Merchant", lvm:"Livin' Merchant", cabang:"Scorecard cabang", merchant:"Pencarian", users:"Kelola pengguna", wpr:"Weekly Performance Report", duta:"Dashboard GMM Duta Transaksi", usak:"Dashboard GMM USAK Livin' Merchant Fase 3", senator:"Dashboard Monitoring Senator", akuisisi:"Dashboard Akuisisi EDC"};
 const PARENT = {duta:"ringkasan", usak:"lvm"};        // halaman turunan: tidak punya menu sendiri
 function subTitle(){
-  if (USER.lim) return `Cari merchant EDC & E-Commerce atau Livin' Merchant, lalu lihat performance lengkapnya`;
+  if (USER.lim) return `Cari merchant e-Channel atau Livin' Merchant, lalu lihat performance lengkapnya`;
   const {y,m,d} = lvmDate();
   return {
-    ringkasan:`Kinerja Transaction Banking Retail Region XI: ATM & CRM, EDC & E-Commerce, dan Livin' Merchant`,
+    ringkasan:`Kinerja Transaction Banking Retail Region XI: ATM & CRM, e-Channel, dan Livin' Merchant`,
     atm:`Januari–${BLN[D.atm.last]} ${D.atm.year}, dibanding periode yang sama ${D.atm.year-1}`,
     edc:`Year to date minggu ${D.edc.week} ${D.edc.year}, dibanding minggu yang sama ${D.edc.year-1}`,
     lvm:`Data sampai ${d} ${BLN[m-1]} ${y}`,
     cabang:`ATM ${BLN[D.atm.last]}, EDC minggu ${D.edc.week}, Livin' Merchant ${d} ${BLN[m-1]} ${y}`,
-    merchant: USER.lim ? `Cari merchant EDC & E-Commerce atau Livin' Merchant, lalu lihat performance lengkapnya` : `Cari merchant EDC & E-Commerce, Livin' Merchant, atau mesin ATM, lalu lihat performance lengkapnya`,
+    merchant: USER.lim ? `Cari merchant e-Channel atau Livin' Merchant, lalu lihat performance lengkapnya` : `Cari merchant e-Channel, Livin' Merchant, atau mesin ATM, lalu lihat performance lengkapnya`,
     users:`Setujui pendaftaran, atur akses area, dan nonaktifkan akun`,
     duta: D.duta ? `Region XI Bali & Nusra, posisi ${D.duta.asof}${D.duta.since?`, dihitung sejak ${D.duta.since}`:""}` : "",
     usak: D.usak ? `Akuisisi Livin' Merchant oleh pegawai${D.usak.period?`, ${D.usak.period}`:""}${D.usak.asof && !D.usak.period.endsWith(D.usak.asof)?`, posisi USAK ${D.usak.asof}`:""}` : "",
     senator: D.senator ? `Region XI Bali & Nusra, posisi ${D.senator.posisi} (tarikan EDA)` : "",
     akuisisi: D.akuisisi ? `Akuisisi new merchant EDC channel cabang (mass retail), posisi ${(() => { const d = new Date(D.akuisisi.posisi); return isNaN(d) ? D.akuisisi.posisi : d.getDate()+" "+BLN[d.getMonth()]+" "+d.getFullYear(); })()}` : "",
-    wpr: D.wpr ? `Merchant EDC & E-Commerce, minggu ke-${D.wpr.weeks[0]} sampai ${D.wpr.weeks[D.wpr.weeks.length-1]} ${D.wpr.year} dan year to date. Sumber: ${D.wpr.file}` : ""}[TAB];
+    wpr: D.wpr ? `Merchant e-Channel, minggu ke-${D.wpr.weeks[0]} sampai ${D.wpr.weeks[D.wpr.weeks.length-1]} ${D.wpr.year} dan year to date. Sumber: ${D.wpr.file}` : ""}[TAB];
 }
 function renderTab(){
   const hb = {lvm: D.usak ? `<button class="head-btn" data-go="usak">Dashboard USAK</button>` : ""}[TAB] || "";

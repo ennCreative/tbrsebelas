@@ -55,7 +55,14 @@ function loadBox(name){            // file data terenkripsi tambahan, dimuat saa
   if (BOX[name]) return Promise.resolve(BOX[name]);
   if (!BOX_P[name]) BOX_P[name] = fetch(`data/${name}.enc.json?t=`+Date.now(),{cache:"no-store"})
     .then(r => { if (!r.ok) throw new Error(`file data/${name}.enc.json tidak ditemukan`); return r.json(); })
-    .then(box => openBox(["merchant","lvm"].includes(name) ? DK2 : DK, box))
+    .then(async box => {
+      const first = ["merchant","lvm"].includes(name) ? DK2 : DK, other = first === DK2 ? DK : DK2;
+      try { return await openBox(first, box); }
+      catch(e){                                   // file dari update lama bisa memakai kunci yang lain
+        if (other) try { return await openBox(other, box); } catch(_){}
+        throw new Error(`file data/${name}.enc.json tidak cocok dengan kunci di server. Upload ulang file ini dari folder data.`);
+      }
+    })
     .then(m => { BOX[name] = m; return m; })
     .catch(e => { delete BOX_P[name]; throw e; });
   return BOX_P[name];

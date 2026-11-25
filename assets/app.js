@@ -1000,39 +1000,8 @@ function renderSummary(){
     <span class="asof-i upd">Diperbarui ${esc(D.generated)}</span>`;
   if ($("goDuta")) $("goDuta").onclick = () => goTab("duta");
 
-  // ---- Financial Highlight: indikator per produk, nilai di atas & persen di bawah
-  const cols = [{a:"", t:"Region XI"}, ...D.areas.map(a => ({a, t:title(a).replace("Area ","")}))];
-  const S = cols.map(c => ({...c, at:atmSummary(c.a), ed:edcSummary(c.a), lv:lvmSummary(c.a)}));
-  const yoy = (c,p) => { const g = gr(c,p); return g==null ? ["", "–"] : [g>=0?"good":"bad", `${g>=0?"▲":"▼"} ${fP(Math.abs(g))} YoY`]; };
-  const tgt = (c,t) => { const p = t ? c/t : null; return p==null ? ["", "–"] : [p>=1?"good":p>=.8?"mid":"bad", `${fP(p)} dari target`]; };
-  const plain = txt => ["", txt];
-  const FH = [
-    {name:"ATM & CRM", color:C.s1, sub:`Year to date Jan–${BLN[A.last]} ${A.year}, dibanding periode yang sama ${A.year-1}`, rows:[
-      ["Transaksi", s => [fC(s.at.t), ...yoy(s.at.t, s.at.tp)]],
-      ["Volume transaksi", s => [fRp(s.at.v), ...yoy(s.at.v, s.at.vp)]],
-      ["Fee based income", s => [fRp(s.at.f), ...yoy(s.at.f, s.at.fp)]],
-      ["Volume setor tunai", s => [fRp(s.at.vs), ...plain(`${fC(s.at.ts)} transaksi setor`)]],
-      ["Jumlah mesin", s => [fN(s.at.n), ...plain(`CRM ${fN(s.at.crm)}, ATM ${fN(s.at.n - s.at.crm)}`)]]]},
-    {name:"EDC & E-Commerce", color:C.s2, sub:`Year to date minggu ke-${E.week} ${E.year}, dibanding minggu yang sama ${E.year-1}`, rows:[
-      ["Sales volume", s => [fRp(s.ed.sv), ...yoy(s.ed.sv, s.ed.svp)]],
-      ["Frekuensi transaksi", s => [fC(s.ed.tx), ...yoy(s.ed.tx, s.ed.txp)]],
-      ["MDFG", s => [fRp(s.ed.md), ...yoy(s.ed.md, s.ed.mdp)]],
-      ["Avg funding", s => [fRp(s.ed.fd), ...yoy(s.ed.fd, s.ed.fdp)]],
-      ["Jumlah merchant", s => [fN(s.ed.merch), ...plain(`${fN(s.ed.edc)} mesin EDC`)]]]},
-    {name:"Livin' Merchant", color:C.s3, sub:`Posisi ${d} ${BLN[m-1]} ${y}; target akuisisi dihitung proporsional sampai tanggal data`, rows:[
-      ["Akuisisi merchant baru YTD", s => [fN(s.lv.akY), ...tgt(s.lv.akY, s.lv.tgt.akYtd)]],
-      ["Merchant USAK", s => [fN(s.lv.usak), ...tgt(s.lv.usak, s.lv.tgt.usak)]],
-      ["Merchant aktif bertransaksi", s => [fN(s.lv.act), ...plain(`${fP(s.lv.n ? s.lv.act/s.lv.n : 0)} dari ${fN(s.lv.n)} terdaftar`)]],
-      ["Sales volume YTD", s => [fRp(s.lv.svy), ...plain(`MTD ${BLN[m-1]}: ${fRp(s.lv.svm)}`)]],
-      ["Fee based income YTD", s => [fRp(s.lv.fby), ...plain(`MTD ${BLN[m-1]}: ${fRp(s.lv.fbm)}`)]]]},
-  ];
-  const sel = c => (AREA && c.a === AREA ? " sel" : "");
-  $("sumBoard").innerHTML = `<div class="board" style="grid-template-columns:190px repeat(${S.length},minmax(0,1fr))">
-    <div></div>${S.map(c=>`<div class="bh${c.a?"":" reg"}${sel(c)}">${c.t}</div>`).join("")}
-    ${FH.map(gp => `<div class="bg" style="--gc:${gp.color}"><b>${gp.name}</b><span>${gp.sub}</span></div>` +
-      gp.rows.map(([nm, fn]) => `<div class="bm">${nm}</div>` +
-        S.map(c => { const [val, k, small] = fn(c); return `<div class="bc ${k}${sel(c)}"><b>${val}</b><span>${small}</span></div>`; }).join("")).join("")).join("")}
-  </div>`;
+  // ---- Ringkasan KPI (kartu per produk)
+  renderKpiCards();
 
   // ---- pie chart
   const tot = at.f + ed.md + lv.fby;
@@ -1461,6 +1430,115 @@ function renderAkuisisi(){
     {k:"sv",l:"SV YTD",num:1,f:fC}, {k:"cif",l:"New CIF",num:1,f:fN}],
     foot: r => { const s_ = k => sum(r,x=>x[k]); return ["","","","Total",fN(s_("reg")),fN(s_("aob")),fN(s_("mtd")),fN(s_("tm")),pctHtml(s_("tm")?s_("mtd")/s_("tm"):null),fN(s_("mtd")-s_("tm")),fN(s_("net")),fN(s_("ty")),pctHtml(s_("ty")?s_("net")/s_("ty"):null),fN(s_("cl")),fC(s_("sv")),fN(s_("cif"))]; }});
 }
+
+
+/* ------------------------------------------------------------------ Ringkasan KPI (Overview) */
+let KC_PROD = "edc", KC_LAST = null;
+const kcBadge = (c, p, unit="%") => {            // pertumbuhan YoY -> {cls, txt}
+  if (unit === "pp"){ if (c==null || p==null) return null; const d = (c-p)*100; return {cls:d>=0?"up":"down", txt:`${d>=0?"▲":"▼"} ${d>=0?"+":""}${d.toLocaleString("id-ID",{minimumFractionDigits:2,maximumFractionDigits:2})} pp YoY`}; }
+  const g = gr(c,p); return g==null ? null : {cls:g>=0?"up":"down", txt:`${g>=0?"▲":"▼"} ${fP(Math.abs(g))} YoY`};
+};
+const kcTgt = (c, t) => { const p = t ? c/t : null; return p==null ? null : {cls:p>=1?"up":p>=.8?"mid":"down", txt:`${fP(p)} dari target`}; };
+const fNum = v => fC(v).replace(/^Rp\s*/,"");
+function kpiCardsData(){
+  const E = D.edc, A = D.atm, W = `W${E.week} ${E.year}`;
+  const scope = AREA ? title(AREA) : "Region XI";
+  if (KC_PROD === "edc"){
+    const s = edcSummary(AREA);
+    const fj = {}; for (const [a,j,v,vp] of E.fundj || []) if (!AREA || a===AREA){ const o = fj[j] || (fj[j] = {v:0,vp:0}); o.v+=v; o.vp+=vp; }
+    const fts = s.sv ? s.fd/(s.sv*52/E.week) : null, ftsp = s.svp ? s.fdp/(s.svp*52/E.week) : null;
+    const rows = Object.values(E.nrows || {}).length ? (AREA ? (E.nrows[AREA]||0) : sum(Object.values(E.nrows), v=>v)) : null;
+    const tk = s.tx ? s.sv/s.tx : 0, tkp = s.txp ? s.svp/s.txp : 0, mdr = s.sv ? s.md/s.sv : null, mdrp = s.svp ? s.mdp/s.svp : null;
+    return {info:`${rows!=null?fN(rows)+" baris rekening, ":""}${scope}`, file:`ringkasan_kpi_edc_${W.replace(" ","_")}`, cards:[
+      {l:"Total sales volume", v:fNum(s.sv), sub:`YTD ${W}`, b:kcBadge(s.sv,s.svp)},
+      {l:"Total frekuensi", v:fNum(s.tx), sub:`YTD ${W}`, b:kcBadge(s.tx,s.txp)},
+      {l:"Total fee based income", v:fNum(s.md), sub:`YTD ${W} (MDFG)`, b:kcBadge(s.md,s.mdp)},
+      {l:"Total average balance", v:fNum(s.fd), sub:`Posisi ${W}, Count For Funding = 1. FTS ${fP(fts)} (${ftsp!=null?((fts-ftsp)*100>=0?"+":"")+((fts-ftsp)*100).toLocaleString("id-ID",{maximumFractionDigits:2})+" pp YoY":"–"})`, b:kcBadge(s.fd,s.fdp),
+       list:Object.entries(fj).filter(([,o])=>o.v||o.vp).sort((x,y)=>y[1].v-x[1].v).map(([j,o]) => ({l:j, v:fNum(o.v), b:kcBadge(o.v,o.vp)}))},
+      {l:"Merchant aktif (MID)", v:fN(s.merch), sub:`Snapshot ${W}, merch = 1`},
+      {l:"Jumlah EDC", v:fN(s.edc), sub:`Snapshot ${W}`},
+      {l:"Average ticket size", v:"Rp "+fN(Math.round(tk)), sub:`YTD ${W}, SV ÷ frekuensi`, b:kcBadge(tk,tkp)},
+      {l:"MDR blended", v:mdr==null?"–":(mdr*100).toLocaleString("id-ID",{minimumFractionDigits:2,maximumFractionDigits:2})+"%", sub:`YTD ${W}, FBI ÷ SV`, b:kcBadge(mdr,mdrp,"pp")}]};
+  }
+  if (KC_PROD === "atm"){
+    const s = atmSummary(AREA), P = `Jan–${BLN[A.last]} ${A.year}`;
+    const tk = s.t ? s.v/s.t : 0, tkp = s.tp ? s.vp/s.tp : 0;
+    return {info:`${fN(s.n)} mesin, ${scope}`, file:`ringkasan_kpi_atm_${A.year}_${A.last+1}`, cards:[
+      {l:"Total transaksi", v:fNum(s.t), sub:`YTD ${P}`, b:kcBadge(s.t,s.tp)},
+      {l:"Total volume transaksi", v:fNum(s.v), sub:`YTD ${P}`, b:kcBadge(s.v,s.vp)},
+      {l:"Total fee based income", v:fNum(s.f), sub:`YTD ${P}`, b:kcBadge(s.f,s.fp)},
+      {l:"Volume setor tunai", v:fNum(s.vs), sub:`YTD ${P}, ${fC(s.ts)} transaksi setor`},
+      {l:"Jumlah mesin", v:fN(s.n), sub:`Posisi ${BLN[A.last]} ${A.year}`, list:[{l:"CRM", v:fN(s.crm)}, {l:"ATM", v:fN(s.n-s.crm)}]},
+      {l:"Rata-rata nominal per transaksi", v:"Rp "+fN(Math.round(tk)), sub:`YTD ${P}, volume ÷ transaksi`, b:kcBadge(tk,tkp)},
+      {l:"Transaksi per mesin per bulan", v:fN(Math.round(s.n ? s.t/s.n/(A.last+1) : 0)), sub:`Rata-rata ${P}`},
+      {l:"FBI per mesin", v:fNum(s.n ? s.f/s.n : 0), sub:`YTD ${P}`}]};
+  }
+  const s = lvmSummary(AREA), {y,m,d} = lvmDate(), asof = `${d} ${BLN[m-1]} ${y}`;
+  return {info:`${fN(s.n)} merchant terdaftar, ${scope}`, file:`ringkasan_kpi_lvm_${y}_${m}_${d}`, cards:[
+    {l:"Merchant terdaftar", v:fN(s.n), sub:`Posisi ${asof}`},
+    {l:"Merchant aktif bertransaksi", v:fN(s.act), sub:`${fP(s.n?s.act/s.n:0)} dari merchant terdaftar`},
+    {l:"Akuisisi YTD", v:fN(s.akY), sub:`Target s.d. ${asof}: ${fN(s.tgt.akYtd)}`, b:kcTgt(s.akY, s.tgt.akYtd)},
+    {l:`Akuisisi MTD ${BLN[m-1]}`, v:fN(s.akM), sub:`Target s.d. ${asof}: ${fN(s.tgt.akMtdP)}`, b:kcTgt(s.akM, s.tgt.akMtdP)},
+    {l:"Merchant USAK", v:fN(s.usak), sub:`Target ${fN(s.tgt.usak)}`, b:kcTgt(s.usak, s.tgt.usak)},
+    {l:"Total sales volume", v:fNum(s.svy), sub:`YTD, MTD ${BLN[m-1]} ${fNum(s.svm)}`},
+    {l:"Total fee based income", v:fNum(s.fby), sub:`YTD, MTD ${BLN[m-1]} ${fNum(s.fbm)}`},
+    {l:"Avg balance tabungan", v:fNum(s.bal), sub:`${fN(s.cls)} rekening merchant closed`}]};
+}
+function renderKpiCards(){
+  const K = KC_LAST = kpiCardsData();
+  $("kcInfo").textContent = K.info;
+  document.querySelectorAll("#kcProd button").forEach(b => { b.classList.toggle("on", b.dataset.p===KC_PROD); b.setAttribute("aria-selected", b.dataset.p===KC_PROD); });
+  const badge = b => b ? `<span class="kc-b ${b.cls}">${esc(b.txt)}</span>` : "";
+  $("kcGrid").innerHTML = K.cards.map(c => `<div class="kc${c.list?" tall":""}">
+      <div class="kc-l">${esc(c.l)}</div><div class="kc-v">${esc(c.v)}</div><div class="kc-s">${esc(c.sub||"")}</div>${badge(c.b)}
+      ${c.list?`<div class="kc-list">${c.list.map(x=>`<div><span>${esc(x.l)}</span><b>${esc(x.v)}</b>${x.b?`<i class="${x.b.cls}">${esc(x.b.txt.replace(" YoY",""))}</i>`:"<i></i>"}</div>`).join("")}</div>`:""}
+    </div>`).join("");
+}
+function kcDownloadXls(){
+  const K = KC_LAST; if (!K) return;
+  const rows = [["Indikator","Nilai","Keterangan","Perubahan"]];
+  for (const c of K.cards){ rows.push([c.l, c.v, c.sub||"", c.b?c.b.txt:""]); for (const x of c.list||[]) rows.push(["  "+c.l+": "+x.l, x.v, "", x.b?x.b.txt:""]); }
+  const html = `<html><head><meta charset="utf-8"></head><body><table border="1"><caption>Ringkasan KPI, ${esc(K.info)}</caption>${rows.map((r,i)=>`<tr>${r.map(v=>i?`<td>${esc(v)}</td>`:`<th>${esc(v)}</th>`).join("")}</tr>`).join("")}</table></body></html>`;
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([html], {type:"application/vnd.ms-excel"})); a.download = K.file + ".xls"; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+function kcDownloadPng(){
+  const K = KC_LAST; if (!K) return;
+  const cols = 4, cw = 330, gap = 16, pad = 24, rowsN = Math.ceil(K.cards.length/cols);
+  const ch = c => 166 + (c.list ? c.list.length*22 + 14 : 0);
+  const rowH = Array.from({length:rowsN}, (_,r) => Math.max(...K.cards.slice(r*cols, r*cols+cols).map(ch)));
+  const W = pad*2 + cols*cw + (cols-1)*gap, H = pad*2 + 50 + rowH.reduce((a,b)=>a+b+gap, 0), sc = 2;
+  const cv = document.createElement("canvas"); cv.width = W*sc; cv.height = H*sc; const g = cv.getContext("2d"); g.scale(sc, sc);
+  const F = getComputedStyle(document.body).fontFamily || "sans-serif";
+  g.fillStyle = "#ffffff"; g.fillRect(0,0,W,H);
+  g.fillStyle = "#0e2a47"; g.font = `700 18px ${F}`; g.fillText("Ringkasan KPI", pad, pad+16);
+  g.fillStyle = "#4f5d6b"; g.font = `13px ${F}`; g.fillText(`${{edc:"EDC & E-Commerce",atm:"ATM & CRM",lvm:"Livin' Merchant"}[KC_PROD]}, ${K.info}`, pad, pad+38);
+  const rr = (x,y,w,h,r) => { g.beginPath(); g.moveTo(x+r,y); g.arcTo(x+w,y,x+w,y+h,r); g.arcTo(x+w,y+h,x,y+h,r); g.arcTo(x,y+h,x,y,r); g.arcTo(x,y,x+w,y,r); g.closePath(); };
+  let y0 = pad + 56;
+  K.cards.forEach((c,i) => {
+    const col = i % cols, row = Math.floor(i/cols); if (col===0 && row>0) y0 += rowH[row-1] + gap;
+    const x = pad + col*(cw+gap), h = rowH[row];
+    rr(x,y0,cw,h,12); g.fillStyle="#fff"; g.fill(); g.strokeStyle="#dfe4ea"; g.lineWidth=1; g.stroke();
+    const gr_ = g.createLinearGradient(0,y0,0,y0+h); gr_.addColorStop(0,"#f5b800"); gr_.addColorStop(1,"#0e2a47"); g.fillStyle = gr_; g.fillRect(x, y0+6, 4, h-12);
+    g.fillStyle="#4f5d6b"; g.font=`700 12px ${F}`; g.fillText(c.l.toUpperCase(), x+22, y0+30);
+    g.fillStyle="#0e2a47"; g.font=`800 26px ${F}`; g.fillText(c.v, x+22, y0+66);
+    g.fillStyle="#8693a0"; g.font=`12px ${F}`;
+    const lines = []; let cur = "";
+    for (const w of String(c.sub||"").split(" ")){ const t = cur ? cur+" "+w : w; if (g.measureText(t).width > cw-44 && cur){ lines.push(cur); cur = w; } else cur = t; }
+    if (cur) lines.push(cur);
+    lines.slice(0,2).forEach((ln,k) => g.fillText(k===1 && lines.length>2 ? ln+"…" : ln, x+22, y0+90+k*16));
+    const by = y0 + 104 + (Math.min(lines.length,2)-1)*16;
+    if (c.b){ g.font=`700 12px ${F}`; const tw = g.measureText(c.b.txt).width + 18; rr(x+22, by, tw, 24, 12);
+      g.fillStyle = c.b.cls==="up" ? "#e3f3e8" : c.b.cls==="mid" ? "#fdf1d3" : "#fbe4e3"; g.fill();
+      g.fillStyle = c.b.cls==="up" ? "#0c7a3e" : c.b.cls==="mid" ? "#8a5a00" : "#b42a2a"; g.fillText(c.b.txt, x+31, by+16); }
+    (c.list||[]).forEach((it,j) => { const yy = y0 + 176 + j*22; g.font=`13px ${F}`; g.fillStyle="#4f5d6b"; g.fillText(it.l, x+22, yy);
+      g.font=`700 13px ${F}`; g.fillStyle="#0e2a47"; g.fillText(it.v, x+130, yy);
+      if (it.b){ const t = it.b.txt.replace(" YoY",""); g.fillStyle = it.b.cls==="up" ? "#0c7a3e" : "#b42a2a"; g.fillText(t, x+cw-22-g.measureText(t).width, yy); } });
+  });
+  cv.toBlob(bl => { const a = document.createElement("a"); a.href = URL.createObjectURL(bl); a.download = K.file + ".png"; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); });
+}
+$("kcProd").addEventListener("click", e => { const b = e.target.closest("button[data-p]"); if (!b) return; KC_PROD = b.dataset.p; renderKpiCards(); });
+$("kcXls").addEventListener("click", kcDownloadXls);
+$("kcPng").addEventListener("click", kcDownloadPng);
 
 const RENDER = {ringkasan:renderSummary, atm:renderATM, edc:renderEDC, lvm:renderLVM, cabang:renderCabang, merchant:renderMerchant, users:renderUsers, wpr:renderWPR, duta:renderDuta, usak:renderUsak, senator:renderSenator, akuisisi:renderAkuisisi};
 let TAB = "ringkasan";

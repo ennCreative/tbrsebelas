@@ -100,6 +100,7 @@
       <button data-tab="merchant"><i class="dot d-src"></i>Pencarian</button>
       <button data-tab="cabang"><i class="dot d-cab"></i>Scorecard cabang</button>
       <button data-tab="users" id="navUsers" hidden><i class="dot d-usr"></i>Kelola pengguna <b class="badge" id="pendBadge" hidden></b></button>
+      <button data-tab="upload" id="navUpload" hidden><i class="dot d-upl"></i>Update data</button>
     </nav>
     <div class="side-foot">
       <div class="me"><div class="avatar sm" id="meFoto"></div><div><div class="who" id="userLine"></div><div class="role" id="roleLine"></div></div></div>
@@ -339,6 +340,21 @@
     </section>
 
     <!-- KELOLA PENGGUNA (admin) -->
+    <!-- UPDATE DATA (admin) -->
+    <section class="tab" id="tab-upload" hidden>
+      <div class="panel">
+        <div class="panel-head"><h3>Upload file Excel</h3><p>Pilih satu atau beberapa file sekaligus. Jenis data dikenali dari nama file, jadi nama file harus mengandung kata kunci di tabel bawah. Setelah upload, data diolah otomatis oleh GitHub dan dashboard terupdate sekitar 10–20 menit kemudian.</p></div>
+        <label class="up-drop" id="upDrop" for="upFile">
+          <input type="file" id="upFile" accept=".xlsx,.xlsm,.xls" multiple>
+          <b>Pilih file Excel</b><span>atau tarik file ke sini</span>
+        </label>
+        <div id="upList"></div>
+        <div class="up-act"><p class="note" id="upMsg"></p><button class="head-btn" id="upGo" hidden>Upload</button></div>
+      </div>
+      <div class="panel"><div class="panel-head"><h3>File yang dipakai dashboard</h3><p id="upCurP">File terakhir per jenis data. Yang bertanda wajib harus sudah pernah diupload agar data bisa diolah.</p></div><div id="upCur"></div></div>
+      <div class="panel"><div class="panel-head"><h3>Riwayat upload</h3><p>Status diperbarui otomatis setiap 30 detik selama halaman ini terbuka. Upload yang masih menunggu bisa dibatalkan dengan mengklik barisnya. Arahkan kursor ke keterangan untuk membaca lengkap.</p></div><div id="upHist"></div></div>
+    </section>
+
     <section class="tab" id="tab-users" hidden>
       <div class="filters">
         <label>Status <select id="usStatus"><option value="">Semua</option><option value="menunggu" selected>Menunggu persetujuan</option><option value="aktif">Aktif</option><option value="nonaktif">Nonaktif</option></select></label>

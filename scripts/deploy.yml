@@ -1,0 +1,106 @@
+# Salin isi file ini ke GitHub: Add file > Create new file > .github/workflows/deploy.yml
+# Lalu Settings > Pages > Build and deployment > Source: pilih "GitHub Actions".
+#
+# Yang dilakukan workflow ini:
+#  1. Setiap ada perubahan file di repo (upload manual)      -> dashboard dipublikasikan ulang.
+#  2. Setiap 10 menit, cek upload baru dari menu "Update data" -> bila ada, Excel diolah,
+#     file data/ diperbarui, lalu dashboard dipublikasikan ulang.
+name: Update data & publikasi dashboard
+
+on:
+  push:
+    branches: [main, master]
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: dashboard-tbr
+  cancel-in-progress: false
+
+jobs:
+  olah:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      publish: ${{ steps.flag.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cek upload baru
+        id: cek
+        if: github.event_name != 'push'
+        env:
+          SB_URL: ${{ secrets.SB_URL }}
+          SB_SERVICE_KEY: ${{ secrets.SB_SERVICE_KEY }}
+          DATA_KEY: ${{ secrets.DATA_KEY }}
+          DATA_KEY_CARI: ${{ secrets.DATA_KEY_CARI }}
+        run: python scripts/proses_upload.py check
+
+      - uses: actions/setup-python@v5
+        if: steps.cek.outputs.pending == 'true'
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Olah Excel
+        id: olah
+        if: steps.cek.outputs.pending == 'true'
+        env:
+          SB_URL: ${{ secrets.SB_URL }}
+          SB_SERVICE_KEY: ${{ secrets.SB_SERVICE_KEY }}
+          DATA_KEY: ${{ secrets.DATA_KEY }}
+          DATA_KEY_CARI: ${{ secrets.DATA_KEY_CARI }}
+        run: |
+          pip install -r requirements.txt
+          python scripts/proses_upload.py build
+
+      - name: Simpan data baru ke repo
+        if: steps.olah.outputs.built == 'true'
+        run: |
+          git config user.name "dashboard-bot"
+          git config user.email "dashboard-bot@users.noreply.github.com"
+          git add data
+          git diff --cached --quiet || git commit -m "Update data dari dashboard ($(date -u +'%Y-%m-%d %H:%M') UTC)"
+          git push
+
+      - name: Tentukan publikasi
+        id: flag
+        run: |
+          if [ "${{ github.event_name }}" = "push" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ steps.olah.outputs.built }}" = "true" ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/configure-pages@v5
+        if: steps.flag.outputs.publish == 'true'
+
+      - name: Siapkan file situs
+        if: steps.flag.outputs.publish == 'true'
+        run: |
+          mkdir -p _site
+          cp -r index.html assets data _site/
+          [ -f CNAME ] && cp CNAME _site/ || true
+          touch _site/.nojekyll
+
+      - uses: actions/upload-pages-artifact@v3
+        if: steps.flag.outputs.publish == 'true'
+        with:
+          path: _site
+
+  publikasi:
+    needs: olah
+    if: needs.olah.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

@@ -4,13 +4,13 @@ Dashboard TBR Region XI — proses upload data dari dashboard (dijalankan GitHub
   python scripts/proses_upload.py check   -> cek apakah ada upload baru (status 'menunggu')
   python scripts/proses_upload.py build   -> unduh file aktif, olah dengan build_data.py, perbarui status
 
-Variabel lingkungan (GitHub > Settings > Secrets and variables > Actions):
-  SB_URL          URL project Supabase, mis. https://xxxx.supabase.co
-  SB_SERVICE_KEY  service_role key Supabase (rahasia, HANYA di GitHub Secrets)
-  DATA_KEY        isi file _rahasia/data_key.txt
-  DATA_KEY_CARI   isi file _rahasia/data_key_cari.txt
+Secret GitHub yang WAJIB (Settings > Secrets and variables > Actions):
+  SB_SERVICE_KEY  service_role key / secret key Supabase (rahasia, HANYA di GitHub Secrets)
+Opsional:
+  SB_URL          URL project Supabase; bila kosong dibaca dari assets/config.js
+  DATA_KEY, DATA_KEY_CARI  bila kosong diambil dari tabel app_keys di Supabase
 """
-import datetime as dt, json, os, shutil, subprocess, sys, tempfile, urllib.parse, urllib.request
+import datetime as dt, json, os, shutil, subprocess, sys, tempfile, urllib.error, urllib.parse, urllib.request
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BUCKET = "data-upload"
@@ -18,26 +18,52 @@ WAJIB = {"atm": "ATM & CRM", "merchant": "Merchant (e-Channel)", "lvm": "Livin' 
 NAMA = dict(WAJIB, wpr="WPR", duta="Duta Transaksi", usak="USAK LVM pegawai", senator="Senator", akuisisi="Akuisisi EDC")
 
 
-def env(k):
+def env(k, required=True):
     v = os.environ.get(k, "").strip()
-    if not v:
+    if not v and required:
         sys.exit(f"Secret {k} belum diisi di GitHub (Settings > Secrets and variables > Actions).")
     return v
 
 
-SB = env("SB_URL").rstrip("/")
+def url_from_config():
+    import re
+    try:
+        txt = open(os.path.join(REPO, "assets", "config.js"), encoding="utf-8").read()
+        m = re.search(r'supabaseUrl\s*:\s*"([^"]+)"', txt)
+        return m.group(1) if m else ""
+    except OSError:
+        return ""
+
+
+SB = (env("SB_URL", False) or url_from_config()).rstrip("/")
+if not SB:
+    sys.exit("URL Supabase tidak ditemukan: isi supabaseUrl di assets/config.js atau secret SB_URL.")
 if "/rest/v1" in SB:
     SB = SB.split("/rest/v1")[0]
 KEY = env("SB_SERVICE_KEY")
-H = {"apikey": KEY, "Authorization": f"Bearer {KEY}"}
+# kunci lama service_role berbentuk JWT (eyJ...) dipakai juga di Authorization;
+# kunci baru (sb_secret_...) cukup di header apikey, gateway Supabase yang mengubahnya.
+H = {"apikey": KEY, **({"Authorization": f"Bearer {KEY}"} if KEY.startswith("eyJ") else {})}
+if KEY.startswith("sb_publishable_") or KEY.count(".") == 2 and '"anon"' in __import__("base64").urlsafe_b64decode(KEY.split(".")[1] + "==").decode("utf-8", "ignore"):
+    sys.exit("SB_SERVICE_KEY berisi kunci publik (anon/publishable). Isi dengan service_role key atau secret key (sb_secret_...).")
 
 
 def call(method, path, body=None, headers=None, raw=False):
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(SB + path, data=data, method=method,
                                  headers={**H, **({"Content-Type": "application/json"} if data else {}), **(headers or {})})
-    with urllib.request.urlopen(req, timeout=300) as r:
-        out = r.read()
+    try:
+        with urllib.request.urlopen(req, timeout=300) as r:
+            out = r.read()
+    except urllib.error.HTTPError as e:
+        msg = e.read().decode("utf-8", "ignore")[:300]
+        if e.code in (401, 403):
+            sys.exit(f"Supabase menolak akses ({e.code}). Periksa secret SB_SERVICE_KEY (harus service_role / secret key) dan SB_URL. {msg}")
+        if e.code == 404 and "data_uploads" in path:
+            sys.exit("Tabel data_uploads tidak ditemukan. Jalankan supabase_upload.sql di Supabase.")
+        raise RuntimeError(f"HTTP {e.code} untuk {path.split('?')[0]}: {msg}")
+    except urllib.error.URLError as e:
+        sys.exit(f"Tidak bisa terhubung ke Supabase ({SB}). Periksa secret SB_URL. {e.reason}")
     return out if raw else (json.loads(out) if out else None)
 
 
@@ -108,10 +134,16 @@ def build():
                     fh.write(call("GET", f"/storage/v1/object/{BUCKET}/{r['path']}/part-{i:03d}", raw=True))
             if os.path.getsize(dest) != r["ukuran"]:
                 raise RuntimeError(f"Ukuran {r['nama_file']} tidak cocok setelah diunduh; upload ulang file ini.")
+        keys = {}
+        if not (env("DATA_KEY", False) and env("DATA_KEY_CARI", False)):
+            keys = {r["id"]: r["k"] for r in (call("GET", "/rest/v1/app_keys?select=id,k") or [])}
+        k1, k2 = env("DATA_KEY", False) or keys.get(1, ""), env("DATA_KEY_CARI", False) or keys.get(2, "")
+        if not (k1 and k2):
+            raise RuntimeError("Kunci data (app_keys id 1 dan 2) tidak ditemukan di Supabase. Jalankan isi _rahasia/supabase_kunci.sql.")
         with open(os.path.join(sec, "data_key.txt"), "w") as fh:
-            fh.write(env("DATA_KEY"))
+            fh.write(k1.strip())
         with open(os.path.join(sec, "data_key_cari.txt"), "w") as fh:
-            fh.write(env("DATA_KEY_CARI"))
+            fh.write(k2.strip())
         p = subprocess.run([sys.executable, os.path.join(REPO, "scripts", "build_data.py"),
                             "--source", src, "--secret", sec, "--out", os.path.join(REPO, "data")],
                            capture_output=True, text=True)

@@ -585,3 +585,23 @@ a.map-a:hover{text-decoration:underline}
 td .et{margin-top:2px}
 .md-edc{margin:0 0 10px}
 .md-edc .et{font-size:12px;padding:3px 10px}
+/* ---- Update data (admin) */
+.d-upl{background:#7dd3c0}
+.up-drop{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border:2px dashed var(--line);border-radius:14px;padding:28px 16px;cursor:pointer;background:var(--canvas);text-align:center;transition:border-color .15s,background .15s}
+.up-drop:hover,.up-drop.on{border-color:var(--data);background:#eef5fd}
+.up-drop:focus-within{outline:3px solid #9ec5f4;outline-offset:2px}
+.up-drop input{position:absolute;opacity:0;width:1px;height:1px}
+.up-drop b{font-size:15px;color:var(--ink)}
+.up-drop span{font-size:13px;color:var(--muted)}
+.up-tbl{width:100%;border-collapse:collapse;font-size:13px;margin-top:14px}
+.up-tbl th{text-align:left;font-size:12px;font-weight:600;color:var(--muted);padding:8px 10px;border-bottom:1px solid var(--line)}
+.up-tbl td{padding:10px;border-bottom:1px solid var(--grid);vertical-align:top}
+.up-tbl .n{text-align:right;font-variant-numeric:tabular-nums}
+.up-tbl code{background:var(--canvas);padding:2px 7px;border-radius:6px;font-size:12px}
+.up-bar{display:inline-block;width:140px;height:8px;background:var(--grid);border-radius:999px;overflow:hidden;vertical-align:middle;margin-right:8px}
+.up-bar i{display:block;height:100%;background:var(--data);transition:width .2s}
+.up-rm::before{content:none}
+.up-rm{padding:4px 10px;font-size:12px}
+.up-act{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:14px}
+.up-act .head-btn{padding:10px 22px}
+.up-msg{display:inline-block;max-width:230px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:bottom}

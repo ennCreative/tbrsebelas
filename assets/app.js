@@ -1924,9 +1924,133 @@ async function openReasonFromKey(mid, nm){
 }
 ["rsCab","rsKat"].forEach(id => $(id).addEventListener("change", renderReason));
 
-const RENDER = {ringkasan:renderSummary, atm:renderATM, edc:renderEDC, lvm:renderLVM, cabang:renderCabang, merchant:renderMerchant, users:renderUsers, wpr:renderWPR, duta:renderDuta, usak:renderUsak, senator:renderSenator, akuisisi:renderAkuisisi, reason:renderReason};
+
+/* ================================================================== UPDATE DATA (admin) */
+const UP_JENIS = [
+  // [kode, nama, kata kunci yang ditampilkan, wajib, pengenal nama file]
+  ["atm","ATM & CRM","ATM",1, n => n.includes("ATM") && !/LVM|MERCHANT|WPR|USAK|DUTA|SENATOR|AKUISISI EDC/.test(n)],
+  ["merchant","Merchant e-Channel","Merchant",1, n => n.includes("MERCHANT") && !/LVM|USAK|DUTA|SENATOR|AKUISISI EDC/.test(n)],
+  ["lvm","Livin' Merchant","LVM",1, n => n.includes("LVM") && !/USAK|DUTA|SENATOR|AKUISISI EDC/.test(n)],
+  ["wpr","WPR","WPR",0, n => n.includes("WPR") && !/USAK|DUTA|SENATOR|AKUISISI EDC/.test(n)],
+  ["duta","GMM Duta Transaksi","Duta",0, n => n.includes("DUTA")],
+  ["usak","GMM USAK Livin' Merchant","USAK",0, n => n.includes("USAK") && !n.includes("DUTA")],
+  ["senator","Monitoring Senator","Senator",0, n => n.includes("SENATOR")],
+  ["akuisisi","Akuisisi EDC","Akuisisi EDC",0, n => n.includes("AKUISISI EDC")]];
+const UPJ = Object.fromEntries(UP_JENIS.map(j => [j[0], j]));
+const upDetect = name => { const n = name.toUpperCase(); const hit = UP_JENIS.filter(j => j[4](n)); return hit.length === 1 ? hit[0][0] : hit.length > 1 ? "ganda" : ""; };
+const fMB = b => (b/1048576).toLocaleString("id-ID", {maximumFractionDigits:1}) + " MB";
+const UP = {files:[], rows:null, timer:null, busy:false};
+const UP_CHUNK = 45 * 1048576;
+const UP_ST = {menunggu:["mid","Menunggu diolah"], diproses:["mid","Sedang diolah"], aktif:["good","Aktif dipakai"], diganti:["off","Diganti file baru"], gagal:["bad","Gagal"], dibatalkan:["off","Dibatalkan"], mengupload:["mid","Mengupload"]};
+
+function upPut(path, blob, onProg){
+  return new Promise((res, rej) => {
+    const go = retry => {
+      const x = new XMLHttpRequest();
+      x.open("POST", `${SBU}/storage/v1/object/data-upload/${path}`);
+      x.setRequestHeader("apikey", CFG.supabaseAnonKey);
+      x.setRequestHeader("Authorization", "Bearer " + SESSION.access_token);
+      x.setRequestHeader("x-upsert", "true");
+      x.setRequestHeader("Content-Type", "application/octet-stream");
+      x.upload.onprogress = e => e.lengthComputable && onProg(e.loaded);
+      x.onload = async () => {
+        if (x.status >= 200 && x.status < 300) return res();
+        if ((x.status === 401 || x.status === 400 && /jwt|token/i.test(x.responseText)) && retry){ try { await refreshSession(SESSION.refresh_token); return go(false); } catch(e){} }
+        let m = x.responseText; try { const j = JSON.parse(m); m = j.message || j.error || m; } catch(e){}
+        rej(new Error(/bucket not found/i.test(m) ? "Penyimpanan upload belum dibuat. Jalankan supabase_upload.sql di Supabase." : /row-level|policy|unauthorized/i.test(m) ? "Akun ini tidak diizinkan mengupload (khusus admin aktif)." : `HTTP ${x.status}: ${m}`));
+      };
+      x.onerror = () => rej(new Error("Koneksi terputus saat mengupload. Coba lagi."));
+      x.send(blob);
+    };
+    go(true);
+  });
+}
+function upRenderList(){
+  const L = UP.files;
+  $("upGo").hidden = !L.some(f => f.jenis && UPJ[f.jenis] && f.st === "siap");
+  $("upGo").disabled = UP.busy;
+  $("upList").innerHTML = L.length ? `<table class="up-tbl"><thead><tr><th>File</th><th>Jenis data</th><th class="n">Ukuran</th><th>Status</th></tr></thead><tbody>${L.map((f,i) => `
+    <tr><td><b>${esc(f.file.name)}</b></td>
+      <td>${f.jenis && UPJ[f.jenis] ? esc(UPJ[f.jenis][1]) : `<span class="bad">${f.jenis === "ganda" ? "Nama file cocok untuk lebih dari satu jenis" : "Jenis tidak dikenali dari nama file"}</span>`}</td>
+      <td class="n">${fMB(f.file.size)}</td>
+      <td>${f.st === "upload" ? `<div class="up-bar"><i style="width:${(f.p*100).toFixed(0)}%"></i></div><small>${(f.p*100).toFixed(0)}%</small>`
+        : f.st === "ok" ? `<span class="tag good">Terupload, menunggu diolah</span>` : f.st === "err" ? `<span class="tag bad" title="${esc(f.err)}">Gagal</span> <small class="bad">${esc(f.err)}</small>`
+        : f.jenis && UPJ[f.jenis] ? `<span class="tag mid">Siap diupload</span> <button class="kc-dl up-rm" data-rm="${i}">Hapus</button>` : `<button class="kc-dl up-rm" data-rm="${i}">Hapus</button>`}</td></tr>`).join("")}</tbody></table>` : "";
+  $("upList").querySelectorAll("[data-rm]").forEach(b => b.onclick = () => { UP.files.splice(+b.dataset.rm, 1); upRenderList(); });
+  const bad = L.filter(f => !(f.jenis && UPJ[f.jenis]) && f.st === "siap").length;
+  $("upMsg").textContent = bad ? `${bad} file belum dikenali. Ubah nama file agar mengandung kata kunci jenis datanya (lihat tabel di bawah), lalu pilih ulang.` : "";
+}
+function upAdd(list){
+  for (const file of list){
+    if (!/\.xls[xm]?$/i.test(file.name)){ continue; }
+    UP.files = UP.files.filter(f => f.file.name !== file.name || f.st !== "siap");
+    UP.files.push({file, jenis:upDetect(file.name), st:"siap", p:0});
+  }
+  const per = {}; for (const f of UP.files.filter(f => f.st === "siap" && UPJ[f.jenis])) (per[f.jenis] || (per[f.jenis] = [])).push(f);
+  upRenderList();
+  const dup = Object.entries(per).filter(([,v]) => v.length > 1).map(([k]) => UPJ[k][1]);
+  if (dup.length) $("upMsg").textContent = `Ada lebih dari satu file untuk ${dup.join(", ")}. Yang dipakai dashboard adalah file yang terakhir diupload.`;
+}
+async function upGo(){
+  if (UP.busy) return; UP.busy = true; upRenderList();
+  let ok = 0, fail = 0;
+  for (const f of UP.files.filter(f => f.st === "siap" && UPJ[f.jenis])){
+    f.st = "upload"; f.p = 0; upRenderList();
+    const path = `${f.jenis}/${Date.now()}-${Math.random().toString(36).slice(2,8)}`, n = Math.max(1, Math.ceil(f.file.size / UP_CHUNK));
+    try {
+      for (let i=0;i<n;i++){
+        const blob = f.file.slice(i*UP_CHUNK, Math.min(f.file.size, (i+1)*UP_CHUNK));
+        await upPut(`${path}/part-${String(i).padStart(3,"0")}`, blob, done => { f.p = (i*UP_CHUNK + done) / f.file.size; upRenderList(); });
+      }
+      await sb("/rest/v1/data_uploads", {method:"POST", headers:{Prefer:"return=minimal"}, body:{jenis:f.jenis, nama_file:f.file.name, ukuran:f.file.size, bagian:n, path, status:"menunggu"}});
+      f.st = "ok"; ok++;
+    } catch(e){ f.st = "err"; f.err = /relation|does not exist|42P01|PGRST/.test(e.message+(e.code||"")) ? "Tabel upload belum dibuat. Jalankan supabase_upload.sql di Supabase." : e.message; fail++; }
+    upRenderList();
+  }
+  UP.busy = false; upRenderList();
+  $("upMsg").textContent = ok ? `${ok} file terupload${fail?`, ${fail} gagal`:""}. GitHub akan mengolahnya otomatis; pantau statusnya di Riwayat upload.` : fail ? "Upload gagal. Lihat keterangan pada tiap file." : "";
+  upLoad();
+}
+async function upLoad(){
+  try { UP.rows = await sb("/rest/v1/data_uploads?select=*&order=created_at.desc&limit=200") || []; UP.err = ""; }
+  catch(e){ UP.rows = UP.rows || []; UP.err = /relation|does not exist|42P01|PGRST/.test(e.message+(e.code||"")) ? "Tabel upload belum dibuat. Admin perlu menjalankan supabase_upload.sql di Supabase." : e.message; }
+  if (TAB === "upload") upRenderTables();
+}
+function upRenderTables(){
+  const R = UP.rows || [];
+  $("upCurP").textContent = UP.err || "File terakhir per jenis data. Yang bertanda wajib harus sudah pernah diupload agar data bisa diolah.";
+  const cur = j => R.find(r => r.jenis === j && ["menunggu","diproses"].includes(r.status)) || R.find(r => r.jenis === j && r.status === "aktif");
+  const st = s => { const [c,t] = UP_ST[s] || ["off", s]; return `<span class="tag ${c==="off"?"":c}">${t}</span>`; };
+  $("upCur").innerHTML = `<table class="up-tbl"><thead><tr><th>Jenis data</th><th>Kata kunci nama file</th><th>File</th><th>Diupload</th><th>Status</th></tr></thead><tbody>${UP_JENIS.map(([k,nm,kw,w]) => { const r = cur(k), src = (D.sources||{})[k === "merchant" ? "edc" : k];
+    return `<tr><td><b>${esc(nm)}</b>${w?` <small class="tag mid">wajib</small>`:""}</td><td><code>${esc(kw)}</code></td>
+      <td>${r ? esc(r.nama_file) + ` <small class="muted">${fMB(r.ukuran)}</small>` : src ? `${esc(src)} <small class="muted">(dari update lewat laptop)</small>` : `<span class="muted">Belum ada</span>`}</td>
+      <td>${r ? `${esc(r.uploaded_by_nama||"–")}<br><small class="muted">${esc(rsTime(r.created_at))}</small>` : "–"}</td>
+      <td>${r ? st(r.status) : src ? `<span class="tag">Perlu diupload sekali</span>` : "–"}</td></tr>`; }).join("")}</tbody></table>`;
+  table($("upHist"), {csv:"riwayat_upload_data", sort:"at", page:15, rows:R.map(r => ({id:r.id, at:r.created_at, j:(UPJ[r.jenis]||[,r.jenis])[1], f:r.nama_file, uk:r.ukuran, by:r.uploaded_by_nama||"–", s:r.status, ps:r.pesan||"", pr:r.processed_at})),
+    rowKey:x => String(x.id), onRow:id => { const r = R.find(x => String(x.id) === id); if (r && r.status === "menunggu" && confirm(`Batalkan upload ${r.nama_file}? File ini tidak akan diolah.`))
+      sb(`/rest/v1/data_uploads?id=eq.${r.id}`, {method:"PATCH", body:{status:"dibatalkan"}}).then(upLoad).catch(e => alert("Gagal membatalkan: " + e.message)); }, cols:[
+    {k:"at",l:"Waktu upload",f:rsTime}, {k:"j",l:"Jenis"}, {k:"f",l:"File",f:v=>`<span class="up-msg" title="${esc(v)}">${esc(v)}</span>`}, {k:"uk",l:"Ukuran",num:1,f:fMB}, {k:"by",l:"Oleh"},
+    {k:"s",l:"Status",f:(v,x)=>st(v)},
+    {k:"ps",l:"Keterangan",f:v=>v?`<span class="up-msg" title="${esc(v)}">${esc(v.split("\n")[0])}</span>`:"–"}, {k:"pr",l:"Selesai diolah",f:v=>v?rsTime(v):"–"}]});
+}
+function renderUpload(){
+  if (USER.role !== "admin"){ goTab("ringkasan"); return; }
+  upRenderList();
+  if (UP.rows) upRenderTables();
+  upLoad();
+  clearInterval(UP.timer);
+  UP.timer = setInterval(() => { if (TAB === "upload" && !document.hidden) upLoad(); else if (TAB !== "upload") clearInterval(UP.timer); }, 30000);
+}
+$("upFile").addEventListener("change", e => { upAdd([...e.target.files]); e.target.value = ""; });
+$("upGo").addEventListener("click", upGo);
+["dragenter","dragover"].forEach(ev => $("upDrop").addEventListener(ev, e => { e.preventDefault(); $("upDrop").classList.add("on"); }));
+["dragleave","drop"].forEach(ev => $("upDrop").addEventListener(ev, e => { e.preventDefault(); $("upDrop").classList.remove("on"); }));
+$("upDrop").addEventListener("drop", e => upAdd([...e.dataTransfer.files]));
+window.addEventListener("beforeunload", e => { if (UP.busy){ e.preventDefault(); e.returnValue = ""; } });
+
+const RENDER = {ringkasan:renderSummary, atm:renderATM, edc:renderEDC, lvm:renderLVM, cabang:renderCabang, merchant:renderMerchant, users:renderUsers, wpr:renderWPR, duta:renderDuta, usak:renderUsak, senator:renderSenator, akuisisi:renderAkuisisi, reason:renderReason, upload:renderUpload};
 let TAB = "ringkasan";
-const TITLES = {ringkasan:"Overview", atm:"ATM & CRM", edc:"EDC Merchant", lvm:"Livin' Merchant", cabang:"Scorecard cabang", merchant:"Pencarian", users:"Kelola pengguna", wpr:"Weekly Performance Report", duta:"Dashboard GMM Duta Transaksi", usak:"Dashboard GMM USAK Livin' Merchant Fase 3", senator:"Dashboard Monitoring Senator", akuisisi:"Dashboard Akuisisi EDC", reason:"Reason SV Drop"};
+const TITLES = {ringkasan:"Overview", atm:"ATM & CRM", edc:"EDC Merchant", lvm:"Livin' Merchant", cabang:"Scorecard cabang", merchant:"Pencarian", users:"Kelola pengguna", wpr:"Weekly Performance Report", duta:"Dashboard GMM Duta Transaksi", usak:"Dashboard GMM USAK Livin' Merchant Fase 3", senator:"Dashboard Monitoring Senator", akuisisi:"Dashboard Akuisisi EDC", reason:"Reason SV Drop", upload:"Update data"};
 const PARENT = {duta:"ringkasan", usak:"lvm", reason:"ringkasan"};        // halaman turunan: tidak punya menu sendiri
 function subTitle(){
   if (USER.lim) return `Cari merchant e-Channel atau Livin' Merchant, lalu lihat performance lengkapnya`;
@@ -1939,6 +2063,7 @@ function subTitle(){
     cabang:`ATM ${BLN[D.atm.last]}, EDC minggu ${D.edc.week}, Livin' Merchant ${d} ${BLN[m-1]} ${y}`,
     merchant: USER.lim ? `Cari merchant e-Channel atau Livin' Merchant, lalu lihat performance lengkapnya` : `Cari merchant e-Channel, Livin' Merchant, atau mesin ATM, lalu lihat performance lengkapnya`,
     users:`Setujui pendaftaran, atur akses area, dan nonaktifkan akun`,
+    upload: "Khusus admin. Upload file Excel terbaru; data diolah otomatis lalu dashboard terupdate untuk semua pengguna.",
     reason: `Alasan penurunan sales volume merchant e-Channel, diisi oleh tim cabang. Pembanding: Top 20 SV drop per cabang, YTD W${D.edc.week} ${D.edc.year}`,
     duta: D.duta ? `Region XI Bali & Nusra, posisi ${D.duta.asof}${D.duta.since?`, dihitung sejak ${D.duta.since}`:""}` : "",
     usak: D.usak ? `Akuisisi Livin' Merchant oleh pegawai${D.usak.period?`, ${D.usak.period}`:""}${D.usak.asof && !D.usak.period.endsWith(D.usak.asof)?`, posisi USAK ${D.usak.asof}`:""}` : "",
@@ -1955,6 +2080,7 @@ function renderTab(){
 function goTab(t){
   if (USER.lim) t = "merchant";
   TAB = t;
+  $("areaPills").hidden = t === "upload" || t === "users";
   const navT = document.querySelector(`#tabs button[data-tab="${t}"]`) ? t : (PARENT[t] || t);
   document.querySelectorAll("#tabs button[data-tab]").forEach(x => x.classList.toggle("active", x.dataset.tab===navT));
   if (["duta","usak","senator","akuisisi"].includes(t)) setWeekly(true);
@@ -1989,9 +2115,10 @@ function start(){
   $("roleLine").textContent = [lim ? LIMITED_ROLES[USER.role] : USER.jabatan, USER.unit].filter(Boolean).join(", ");
   $("meFoto").outerHTML = avatarHtml(USER.foto, USER.nama, "sm").replace('class="avatar sm"', 'class="avatar sm" id="meFoto"');
   $("navUsers").hidden = USER.role !== "admin";
+  $("navUpload").hidden = USER.role !== "admin";
   $("navWeekly").hidden = lim || !(D.duta || D.usak || D.senator || D.akuisisi);
   if (USER.role === "admin") loadUsers().catch(e => console.warn(e));
-  else if (TAB === "users") TAB = "ringkasan";
+  else if (TAB === "users" || TAB === "upload") TAB = "ringkasan";
   if (lim) { TAB = "merchant"; MS.sel = null; }
   $("footLine").textContent = `Data diperbarui ${D.generated}`;
   $("footLine").title = "Sumber: " + Object.values(D.sources).filter(Boolean).join(", ");

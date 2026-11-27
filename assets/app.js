@@ -1008,8 +1008,10 @@ function renderSummary(){
     <span class="asof-i"><i class="dot d-lvm"></i>Livin' Merchant <b>${d} ${BLN[m-1]} ${y}</b></span>
     ${D.duta?`<span class="asof-i"><i class="dot d-duta"></i>Duta Transaksi <b>${esc(D.duta.asof)}</b></span>`:""}
     <button class="head-btn asof-btn" id="goReason">Reason SV Drop</button>
+    <button class="head-btn asof-btn" id="copyUpd" title="Salin daftar posisi data untuk dibagikan (WhatsApp, email)">Copy update data</button>
     <span class="asof-i upd">Diperbarui ${esc(D.generated)}</span>`;
   $("goReason").onclick = () => goTab("reason");
+  $("copyUpd").onclick = e => copyText(updateDataText(), e.currentTarget);
 
   // ---- Ringkasan KPI (kartu per produk)
   renderKpiCards();
@@ -1026,6 +1028,40 @@ function renderSummary(){
   const fbiSum = sum(groups, g=>g.fbi), akSum = sum(groups, g=>g.ak);
   drawPie($("cSumPie2"), {fmt:fRp, center:[AREA?"total area":"total region", fRp(fbiSum).replace("Rp ","")], items:groups.map(g => ({label:g.label, value:g.fbi, color:g.color}))});
   drawPie($("cSumPie3"), {fmt:fN, center:["merchant baru", fN(akSum)], items:groups.map(g => ({label:g.label, value:g.ak, color:g.color, note:g.tak?`${fP(g.ak/g.tak)} target`:""}))});
+}
+// ---- teks "update data" untuk dibagikan
+const BLN_L = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
+function tglPanjang(v){            // "2026-11-24" / Date / teks bebas -> "24 November 2026"
+  if (!v) return "";
+  const d = v instanceof Date ? v : /^\d{4}-\d{2}-\d{2}/.test(v) ? new Date(v.slice(0,10)+"T00:00:00") : null;
+  return d && !isNaN(d) ? `${d.getDate()} ${BLN_L[d.getMonth()]} ${d.getFullYear()}` : String(v);
+}
+function updateDataText(){
+  const A = D.atm, E = D.edc, L = D.lvm, rows = [];
+  rows.push(["ATM & CRM", `data s.d. ${tglPanjang(new Date(A.year, A.last+1, 0))}`]);
+  rows.push(["e-Channel (Merchant)", `YTD minggu ke-${E.week} ${E.year}`]);
+  rows.push(["Livin' Merchant", `data s.d. ${tglPanjang(L.asof)}`]);
+  if (D.wpr) { const w = D.wpr.weeks; rows.push(["Weekly Performance Report", `minggu ke-${w[0]} s.d. ${w[w.length-1]} ${D.wpr.year}`]); }
+  if (D.duta) rows.push(["GMM Duta Transaksi", `posisi ${D.duta.asof}`]);
+  if (D.usak) rows.push(["GMM USAK Livin' Merchant Fase 3", D.usak.asof ? `posisi ${D.usak.asof}` : D.usak.period]);
+  if (D.senator) rows.push(["Monitoring Senator", `posisi ${D.senator.posisi}`]);
+  if (D.akuisisi) rows.push(["Akuisisi EDC", `posisi ${tglPanjang(D.akuisisi.posisi)}`]);
+  const [gd, gt] = String(D.generated||"").split(" ");
+  return [`*Update Data Dashboard TBR Region XI*`, `Diperbarui ${tglPanjang(gd)}${gt?` pukul ${gt} WITA`:""}`, ``,
+    ...rows.filter(r => r[1]).map((r,i) => `${i+1}. ${r[0]}: ${r[1]}`), ``,
+    `Dashboard: ${location.origin}${location.pathname.replace(/index\.html$/,"")}`].join("\n");
+}
+async function copyText(txt, btn){
+  let ok = false;
+  try { await navigator.clipboard.writeText(txt); ok = true; } catch(e){
+    const ta = document.createElement("textarea"); ta.value = txt; ta.style.cssText = "position:fixed;opacity:0";
+    document.body.appendChild(ta); ta.select(); try { ok = document.execCommand("copy"); } catch(_){} ta.remove();
+  }
+  if (!btn) return ok;
+  const t0 = btn.dataset.t0 || (btn.dataset.t0 = btn.textContent);
+  btn.textContent = ok ? "Tersalin ✓" : "Gagal menyalin"; btn.classList.toggle("ok", ok);
+  clearTimeout(btn._t); btn._t = setTimeout(() => { btn.textContent = t0; btn.classList.remove("ok"); }, 2000);
+  return ok;
 }
 function branchSlices(){            // 5 cabang terbesar + lainnya, untuk area terpilih
   const R = {}, g = c => R[c] || (R[c] = {c, fbi:0, ak:0});

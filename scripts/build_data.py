@@ -879,7 +879,7 @@ def main():
     names = {k: v["nama"] for k, v in targets.items()}
     payload = dict(
         title="Transaction Banking Retail Region XI",
-        generated=dt.datetime.now().strftime("%Y-%m-%d %H:%M"),
+        generated=dt.datetime.now(dt.timezone(dt.timedelta(hours=8))).strftime("%Y-%m-%d %H:%M"),   # WITA, juga saat diolah GitHub (UTC)
         sources=dict(atm=os.path.basename(atm_f), edc=os.path.basename(edc_f), lvm=os.path.basename(lvm_f), wpr=os.path.basename(wpr_f) if wpr_f else "",
                      duta=os.path.basename(duta_f) if duta_f else "", usak=os.path.basename(usak_f) if usak_f else "",
                      senator=os.path.basename(sen_f) if sen_f else "", akuisisi=os.path.basename(akq_f) if akq_f else ""),

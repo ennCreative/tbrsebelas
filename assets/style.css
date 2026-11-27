@@ -607,3 +607,5 @@ td .et{margin-top:2px}
 .up-msg{display:inline-block;max-width:230px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:bottom}
 
 .asof .asof-btn.ok{background:#1f8a4c;border-color:#1f8a4c;color:#fff}
+.view-sel{display:inline-flex;align-items:center;gap:6px;margin-right:10px;font-size:12px;color:var(--text-2)}
+.view-sel select{font:inherit;padding:3px 6px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)}

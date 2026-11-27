@@ -704,33 +704,89 @@ def _report_notes(path, sheet, start_pat):
     return out
 
 
+BLN_ID = {b: i + 1 for i, b in enumerate(["januari", "februari", "maret", "april", "mei", "juni", "juli",
+                                           "agustus", "september", "oktober", "november", "desember"])}
+
+
+def tgl_id(t):
+    """'Posisi 23 November 2026' -> date(2026, 11, 23); None bila tidak terbaca."""
+    m = re.search(r"(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})", str(t))
+    if not m or m.group(2).lower() not in BLN_ID:
+        return None
+    try:
+        return dt.date(int(m.group(3)), BLN_ID[m.group(2).lower()], int(m.group(1)))
+    except ValueError:
+        return None
+
+
+def _senator_sheet(path, rows_of):
+    """File Senator sering berisi beberapa sheet 'Dashboard', 'Dashboard (2)', ... dan yang terbaru tidak selalu
+    bernama 'Dashboard'. Pilih sheet Dashboard* yang tanggal 'Posisi'-nya paling baru."""
+    best = None
+    for nm in sheet_names(path):
+        if not nm.strip().lower().startswith("dashboard"):
+            continue
+        try:
+            rows = rows_of(nm)
+            hdr = next(i for i, r in enumerate(rows) if any(str(v).strip() == "Total Universe Senator" for v in r))
+        except Exception:
+            continue
+        pos = next((str(v).strip() for r in rows[:hdr] for j, v in enumerate(r)
+                    if j > 5 and pd.notna(v) and str(v).strip().lower().startswith("posisi")), "")
+        d = tgl_id(pos) or dt.date.min
+        key = (d, nm.strip().lower() == "dashboard")
+        if best is None or key > best[0]:
+            best = (key, nm, rows, hdr)
+    if not best:
+        raise RuntimeError("sheet Dashboard dengan kolom 'Total Universe Senator' tidak ditemukan")
+    return best[1], best[2], best[3]
+
+
 def build_senator(path):
     log("Senator:", os.path.basename(path))
-    rows = _rows(path, "Dashboard")
-    hdr = next(i for i, r in enumerate(rows) if any(str(v).strip() == "Total Universe Senator" for v in r))
-    H = [str(v).strip() if pd.notna(v) else "" for v in rows[hdr]]
-    if H[7] != "Total Universe Senator" or H[22] != "Jlh" or H[23] != "USAK":
-        log("  PERINGATAN: susunan kolom sheet Dashboard berubah, halaman Senator dilewati")
+    sheet, rows, hdr = _senator_sheet(path, lambda nm: _rows(path, nm))
+    log(f"  sheet dipakai: {sheet}")
+    H = [re.sub(r"\s+", " ", str(v)).strip() if pd.notna(v) else "" for v in rows[hdr]]
+
+    def col(name, nth=0):
+        idx = [j for j, h in enumerate(H) if h.lower() == name.lower()]
+        if len(idx) <= nth:
+            raise KeyError(name)
+        return idx[nth]
+
+    try:
+        C = dict(uni=col("Total Universe Senator"), jlh=col("Jlh"), usak=col("USAK"), fr=col("Frek Ytd"), sv=col("SV Ytd"),
+                 fbi=col("FBI Ytd"), av=col("Avbal Ytd"), nd=[col("Non Duplicate MID", i) for i in range(4)],
+                 cap=col("Total Senator Capture"), fu=col("Total Follow Up"))
+        C["gold"] = C["uni"] + 1
+        pct = next(j for j, h in enumerate(H) if h.lower().startswith("% klaim gold"))
+        per = [j for j in range(pct + 1, C["jlh"]) if re.match(r"^(W\d+ [A-Za-z]+|[A-Za-z]{3,4} \d{2})$", H[j])]
+    except (KeyError, StopIteration) as e:
+        log(f"  PERINGATAN: kolom {e} tidak ditemukan di sheet {sheet}, halaman Senator dilewati")
         return None
+    wk = [j for j in per if H[j].upper().startswith("W")][-2:]
+    mo = [j for j in per if not H[j].upper().startswith("W")]
+    per = (mo[-(4 - len(wk)):] if len(wk) < 4 else []) + wk
+    per = [None] * (4 - len(per)) + per
     pos = {}
     for r in rows[:hdr]:
         for j, v in enumerate(r):
             t = str(v).strip() if pd.notna(v) else ""
             if t.lower().startswith("posisi") and j > 5 and "posisi" not in pos:
                 pos["posisi"] = re.sub(r"^posisi\s*", "", t, flags=re.I)
-            elif j == 22 and re.search(r"\d{4}", t):
+            elif j == C["jlh"] and re.search(r"\d{4}", t):
                 pos["cbg"] = t
     cab = []
     for r in rows[hdr + 1:]:
         k = code(r[2])
         if not (k and len(k) == 5 and pd.notna(r[5])):
             continue
-        g = lambda j: _n(r[j])
+        g = lambda j: _n(r[j]) if j is not None and j < len(r) else 0.0
         cab.append([k, str(r[5]).strip(), str(r[3] or "").strip().replace(".", ""), AREA_BY_CODE.get(k[:3], norm_area(r[1])),
                     str(r[4]).strip() if pd.notna(r[4]) else "",
-                    int(g(7)), int(g(8)), int(g(11)), int(g(12)), int(g(15)), int(g(16)),
-                    int(g(22)), int(g(23)), int(g(25)), r_(g(26)), r_(g(27)), r_(g(28)),
-                    int(g(31)), int(g(34)), int(g(37)), int(g(40)), int(g(42)), int(g(43))])
+                    int(g(C["uni"])), int(g(C["gold"])), *[int(g(j)) for j in per],
+                    int(g(C["jlh"])), int(g(C["usak"])), int(g(C["fr"])), r_(g(C["sv"])), r_(g(C["fbi"])), r_(g(C["av"])),
+                    *[int(g(j)) for j in C["nd"]], int(g(C["cap"])), int(g(C["fu"]))])
     # universe (detail merchant sekitar cabang) -> box terpisah
     uni = []
     if "Detail Klaim Gold" in sheet_names(path):
@@ -746,7 +802,7 @@ def build_senator(path):
                         str(x.get("nearby_place_id", "") or ""), mid if mid not in ("0", "") else ""])
     notes = _report_notes(path, "Sheet1", r"^NOTES\s*:?")
     log(f"  {len(cab)} cabang, universe {sum(c[5] for c in cab)} merchant, gold {sum(c[6] for c in cab)}, detail {len(uni)}")
-    plbl = [re.sub(r"\s+", " ", H[j]).strip().title().replace("Sept", "Sep") for j in (11, 12, 15, 16)]
+    plbl = [H[j].title().replace("Sept", "Sep") if j is not None else "" for j in per]
     return dict(posisi=pos.get("posisi", ""), cbg=pos.get("cbg", ""), plbl=plbl, cab=cab, notes=notes, file=os.path.basename(path)), uni
 
 

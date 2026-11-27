@@ -1,0 +1,31 @@
+# Lokasi di GitHub: .github/workflows/pantau.yml
+# Berjaga mengecek upload baru tiap menit (06.00-22.00 WITA) lalu menjalankan deploy.yml segera.
+# Jadwal di bawah hanya cadangan untuk memulai/menyambung penjagaan (jam UTC = WITA - 8).
+name: Pantau upload dashboard
+
+on:
+  schedule:
+    - cron: "7,37 22,23,0-13 * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: pantau-upload
+  cancel-in-progress: false
+
+jobs:
+  pantau:
+    runs-on: ubuntu-latest
+    timeout-minutes: 58
+    steps:
+      - uses: actions/checkout@v4
+      - name: Berjaga
+        env:
+          SB_SERVICE_KEY: ${{ secrets.SB_SERVICE_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PANTAU_MENIT: "50"
+        run: python3 scripts/pantau_upload.py

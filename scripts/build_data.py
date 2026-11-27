@@ -393,7 +393,9 @@ def build_lvm(path, branch_names):
     lob = []
     for (a, l), g in df.groupby(["_a", df["lob_lm"].fillna("Lainnya").astype(str)]):
         lob.append([a, l, int(len(g)), int(g["_act"].sum()), int(g["_usak"].sum()), r(g["sv_ytd"].sum())])
-    top = df.nlargest(100, "sv_ytd")
+    # 1000 merchant SV terbesar se-region + 1000 terbesar per area (tabel bisa ditampilkan s.d. 1000 baris)
+    top = pd.concat([df.nlargest(1000, "sv_ytd")] + [g.nlargest(1000, "sv_ytd") for _, g in df.groupby("_a")])
+    top = top[~top.index.duplicated()].sort_values("sv_ytd", ascending=False)
     tops = [dict(nm=str(x["store_name"]).strip(), a=x["_a"], c=x["_c"], l=str(x["lob_lm"]), g=x["_g"],
                  sv=r(x["sv_ytd"]), fb=r(x["fbi_ytd"]), svm=r(x["sv_mtd"]), d=x["_d"].strftime("%Y-%m-%d") if pd.notna(x["_d"]) else "")
             for _, x in top.iterrows()]

@@ -258,14 +258,18 @@ const chart = (id, cfg) => drawChart($(id), cfg);
 const S_ = (label, data, color, extra={}) => Object.assign({label, data, color}, extra);
 
 /* ------------------------------------------------------------------ table */
-function table(el, {cols, rows, page=25, search=true, sort, dir=-1, foot, csv, freeze=0, full=false, rowKey=null, onRow=null, needQuery=null}){
+const VIEW_OPTS = [10, 25, 50, 100, 250, 500, 1000];
+function table(el, {cols, rows, page=25, search=true, sort, dir=-1, foot, csv, freeze=0, full=false, rowKey=null, onRow=null, needQuery=null, view}){
   const st = el._st || (el._st = {q:"", sort, dir, p:0});
   st.cols = cols; st.rows = rows;
+  // view: pilihan jumlah baris per halaman (0 = semua). Default berganti bila mode filter berubah.
+  if (view !== undefined && st.viewDef !== view){ st.viewDef = view; st.ps = view; st.p = 0; }
   const draw = () => {
     let r = st.rows;
     if (st.q){ const q = st.q.toLowerCase(); r = r.filter(x => cols.some(c => String(c.v ? c.v(x) : x[c.k]).toLowerCase().includes(q))); }
     if (st.sort){ const c = cols.find(c=>c.k===st.sort); const g = c && c.v ? c.v : x=>x[st.sort];
       r = [...r].sort((a,b)=>{ const A=g(a), B=g(b); return (typeof A==="number"||typeof B==="number") ? ((A??-Infinity)-(B??-Infinity))*st.dir : String(A).localeCompare(String(B))*st.dir; }); }
+    if (view !== undefined) page = st.ps || Math.max(1, r.length);
     const pages = Math.max(1, Math.ceil(r.length/page)); st.p = Math.min(st.p, pages-1);
     const vis = r.slice(st.p*page, st.p*page+page);
     const cell = (c,x,i) => { const v = c.v ? c.v(x) : x[c.k];
@@ -278,7 +282,7 @@ function table(el, {cols, rows, page=25, search=true, sort, dir=-1, foot, csv, f
     }
     el.innerHTML = `
       <div class="tbl-tools">${search?`<input type="search" placeholder="Cari…" value="${esc(st.q)}">`:"<span></span>"}
-        <span><span class="note">${fN(r.length)} baris</span> ${csv?`<button class="btn" data-csv>Unduh CSV</button>`:""}</span></div>
+        <span>${view!==undefined?`<label class="view-sel">Tampilkan <select data-view>${(st.viewDef===0||st.ps===0?[0]:[]).concat(VIEW_OPTS).map(n=>`<option value="${n}"${n===st.ps?" selected":""}>${n?n:"Semua"}</option>`).join("")}</select></label>`:""}<span class="note">${fN(r.length)} baris</span> ${csv?`<button class="btn" data-csv>Unduh CSV</button>`:""}</span></div>
       <div class="tbl-wrap${full?" full":""}${freeze?" frz":""}"><table><thead><tr>${cols.map(c=>`<th class="${c.num?"num":""}" data-k="${c.k}">${c.l}${st.sort===c.k?`<span class="arr">${st.dir>0?"▲":"▼"}</span>`:""}</th>`).join("")}</tr></thead>
       <tbody>${vis.map((x,i)=>`<tr${rowKey?` data-key="${esc(rowKey(x))}" class="clk" title="Klik untuk melihat performance lengkap"`:""}>${cols.map(c=>cell(c,x,st.p*page+i)).join("")}</tr>`).join("") || `<tr><td colspan="${cols.length}" class="note">Tidak ada data</td></tr>`}</tbody>
       ${foot?`<tfoot><tr>${foot(r).map((v,i)=>`<td class="${cols[i]&&cols[i].num?"num":""}">${v??""}</td>`).join("")}</tr></tfoot>`:""}</table></div>
@@ -296,6 +300,8 @@ function table(el, {cols, rows, page=25, search=true, sort, dir=-1, foot, csv, f
     if (inp) inp.oninput = e => { st.q = e.target.value; st.p = 0; draw(); const n = el.querySelector("input[type=search]"); n.focus(); n.setSelectionRange(n.value.length,n.value.length); };
     el.querySelectorAll("th").forEach(th => th.onclick = () => { const k = th.dataset.k; st.dir = st.sort===k ? -st.dir : -1; st.sort = k; draw(); });
     el.querySelectorAll("[data-p]").forEach(b => b.onclick = () => { st.p = Math.max(0, st.p + +b.dataset.p); draw(); });
+    const vs = el.querySelector("[data-view]");
+    if (vs) vs.onchange = () => { st.ps = +vs.value; st.p = 0; draw(); };
     const cb = el.querySelector("[data-csv]");
     if (cb) cb.onclick = () => {
       const lines = [cols.map(c=>`"${c.l.replace(/<[^>]+>/g,"")}"`).join(";")].concat(r.map(x => cols.map(c => { const v = c.v ? c.v(x) : x[c.k]; return typeof v==="number" ? String(v).replace(".",",") : `"${String(v??"").replace(/"/g,'""')}"`; }).join(";")));
@@ -556,7 +562,7 @@ function renderLVM(){
   const rows = codes.map(c => { const g = lvmAgg(byC[c]||[]), tt = tgtFor([c]);
     return {c, nm:bn(c), a:BAREA[c]||"", k:KELAS[c]||"-", akM:g.akM, tM:tt.akMtdP, tMf:tt.akMtd, akY:g.akY, tY:tt.akYtd, usak:g.usak, tU:tt.usak, n:g.n, act:g.act, svy:g.svy,
             pM:tt.akMtdP?g.akM/tt.akMtdP:null, pY:tt.akYtd?g.akY/tt.akYtd:null, pU:tt.usak?g.usak/tt.usak:null}; });
-  table($("tLvmRank"), {csv:"ranking_cabang_lvm", sort:"pY", rows, cols:[
+  table($("tLvmRank"), {csv:"ranking_cabang_lvm", sort:"pY", view:AREA?0:10, rows, cols:[
     {k:"rk",l:"#",num:1,v:()=>0,h:(x,v,i)=>i+1}, {k:"c",l:"Kode"}, {k:"nm",l:"Cabang"}, {k:"a",l:"Area",f:title}, {k:"k",l:"Kelas"},
     {k:"akM",l:"Akuisisi MTD",num:1,f:fN}, {k:"tM",l:`Target s.d. ${d} ${BLN[m-1]}`,num:1,f:fN}, {k:"pM",l:"% MTD",num:1,f:pctHtml},
     {k:"akY",l:"Akuisisi YTD",num:1,f:fN}, {k:"tY",l:"Target YTD",num:1,f:fN}, {k:"pY",l:"% YTD",num:1,f:pctHtml},
@@ -567,10 +573,10 @@ function renderLVM(){
   const lobs = {};
   for (const r of L.lob) if (inArea(r[0])) { const o = lobs[r[1]] || (lobs[r[1]] = {l:r[1], n:0, act:0, usak:0, sv:0}); o.n+=r[2]; o.act+=r[3]; o.usak+=r[4]; o.sv+=r[5]; }
   renderLvmUsak();
-  table($("tLvmLob"), {csv:"lob_lvm", sort:"sv", page:12, rows:Object.values(lobs), cols:[
+  table($("tLvmLob"), {csv:"lob_lvm", sort:"sv", view:AREA?0:10, rows:Object.values(lobs), cols:[
     {k:"l",l:"Kategori"}, {k:"n",l:"Merchant",num:1,f:fN}, {k:"act",l:"Aktif",num:1,f:fN}, {k:"usak",l:"USAK",num:1,f:fN}, {k:"sv",l:"SV YTD",num:1,f:fC}]});
 
-  table($("tLvmTop"), {csv:"top_merchant_lvm", sort:"sv", page:12, rows:L.top.filter(x=>inArea(x.a) && (!kelas || (KELAS[x.c]||"Lainnya")===kelas)), cols:[
+  table($("tLvmTop"), {csv:"top_merchant_lvm", sort:"sv", view:AREA?0:10, rows:L.top.filter(x=>inArea(x.a) && (!kelas || (KELAS[x.c]||"Lainnya")===kelas)), cols:[
     {k:"nm",l:"Merchant"}, {k:"cb",l:"Cabang",v:x=>bn(x.c)}, {k:"g",l:"Grading"}, {k:"sv",l:"SV YTD",num:1,f:fC}, {k:"fb",l:"FBI YTD",num:1,f:fC}]});
 }
 
